@@ -49,23 +49,70 @@
 
 ## GitHub 仓库设置（抄这里）
 
-**About（≤350 字符）**
+### 为什么不能只写中文（可发现性）
+
+GitHub 的站内搜索主要吃这四个地方，权重从高到低大致是：
+
+1. **仓库名**（`fish-memory-plugin` 只命中 `memory`）
+2. **Description**（About 那一行，索引权重很高）
+3. **Topics**（每个 topic 都是一个入口，原来只有 5 个）
+4. **README 正文**（Google / GitHub 都会索引；英文摘要原来在第 15 行，太靠后）
+
+而用户实际会搜的词是：`ai memory`、`long-term memory`、`llm memory`、`local first`、`markdown memory`、`AI 记忆`、`大模型 长期记忆`。
+所以现在的策略是：**Description 英文关键词前置 + 中文补充**，Topics 扩到 12 个，README 第一屏就是英文或中英混排的定位句。
+
+### About（≤350 字符，推荐这个）
 
 ```
-给 AI 伴侣的零依赖记忆插件：记忆是你能直接读的 markdown，对话是只追加的 JSONL；注入有预算，每条记忆都能追到原话，进模型前一律净化。
+Local-first long-term memory for AI companions: markdown memory + append-only JSONL transcripts, budgeted prompt injection, source-traceable, zero dependencies. 中文文档齐全。
 ```
 
-**Topics（5 个）**
+**备选 A（中文优先，面向中文用户）**
 
 ```
-ai-memory  long-term-memory  markdown  prompt-injection  deepseek-harness
+给 AI 伴侣的本地长期记忆插件（local-first AI memory）：markdown 记忆 + 只追加 JSONL + 有预算的注入 + 来源可追溯，零依赖、无遥测、无向量库。
 ```
 
-**Description 英文备选**（如果想让国际用户搜到）
+**备选 B（卖差异，适合发帖）**
 
 ```
-Zero-dependency long-term memory for AI companions: markdown memory + append-only JSONL transcripts, budgeted injection, source-traceable points, sanitized prompts.
+Memories you can `cat`: a zero-dependency AI memory plugin. markdown memory, append-only JSONL transcripts, explicit token budgets, no vector DB, no telemetry.
 ```
+
+### Topics（12 个，逐个粘）
+
+```
+ai-memory
+long-term-memory
+llm
+ai-companion
+local-first
+markdown
+jsonl
+memory
+prompt-injection
+context-engineering
+zero-dependency
+deepseek-harness
+```
+
+> `memory` / `llm` / `chatbot` 这类大词流量高但竞争激烈；`ai-memory` / `long-term-memory` / `local-first` 才是真正会点进来的人。混搭着用。
+
+### 仓库名（可改可不改）
+
+| 名字 | 优点 | 缺点 |
+|---|---|---|
+| `fish-memory-plugin`（现在） | 和"大肥鱼"这个人格绑定，有辨识度 | 只命中 `memory`，`fish` 对搜索是噪音 |
+| `ai-memory-plugin` | 直接命中 `ai memory`，最容易被搜到 | 名字很通用，容易淹没在同名项目里 |
+| `local-first-memory` | 命中 `local-first`（正是差异点） | 少了个 `ai`，可能被当成通用工具 |
+| `fish-memory` | 短、好念、去掉 `-plugin` 冗余 | 搜索命中不变 |
+
+改名只需网页 Settings → Rename（GitHub 会保留 301 跳转，老链接不失效），改完把远程地址换成新的：
+
+```powershell
+git remote set-url origin git@github.com:yscxdd/<新名字>.git
+```
+
 
 ## 常见提问可以直接这样答
 
