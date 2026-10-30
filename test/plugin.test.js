@@ -719,10 +719,15 @@ test('子 agent 不入档、不注入（工具人不是她）', async () => {
 })
 
 test('目录解析：会话 cwd 优先，进程 cwd 只作兜底', () => {
-  assert.equal(resolveMemoryDir({ sessionCwd: 'D:/ws', cwd: 'C:/profile' }), join('D:/ws', 'fish-memory'))
-  assert.equal(resolveMemoryDir({ cwd: 'C:/profile' }), join('C:/profile', 'fish-memory'))
-  assert.equal(resolveMemoryDir({ explicit: 'D:/mem', sessionCwd: 'D:/ws' }), 'D:/mem')
-  assert.equal(resolveMemoryDir({ explicit: 'mem', sessionCwd: 'D:/ws' }), resolve('D:/ws', 'mem'))
+  // 不要写死 `D:/ws` 这类盘符路径：在 Linux 上 `isAbsolute('D:/mem')` 是 false，
+  // 代码会走 resolve() 分支，这条断言就只在 Windows 通过（CI 的 ubuntu 作业抓到的正是它）。
+  const ws = resolve('/', 'ws')
+  const profile = resolve('/', 'profile')
+  const mem = resolve('/', 'mem')
+  assert.equal(resolveMemoryDir({ sessionCwd: ws, cwd: profile }), join(ws, 'fish-memory'))
+  assert.equal(resolveMemoryDir({ cwd: profile }), join(profile, 'fish-memory'))
+  assert.equal(resolveMemoryDir({ explicit: mem, sessionCwd: ws }), mem, '显式绝对路径原样返回')
+  assert.equal(resolveMemoryDir({ explicit: 'mem', sessionCwd: ws }), resolve(ws, 'mem'), '相对 explicit 挂到 base 上')
 })
 
 test('apply：没配 memoryDir 时用会话 cwd，不用进程 cwd（回归）', () => {

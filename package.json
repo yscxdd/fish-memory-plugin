@@ -18,7 +18,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test",
+    "test": "node --test --test-reporter=spec",
     "verify": "node scripts/memory.mjs verify",
     "hostcheck": "node scripts/memory.mjs hostcheck",
     "gold": "node scripts/memory.mjs gold",
