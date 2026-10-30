@@ -27,9 +27,10 @@
 | v0.13.3 | **演示素材出库 + 跨天基线** | 217 | 库里不再读 `_samples/`；0 点后不再误报"档案被改" |
 | v0.14.0 | **冲突可见 / 坏点不静默 / 事实失效** | 227 | 抄 graphiti 的三条：矛盾要看得见、坏数据要报、失效是标记不是删除 |
 | v0.14.1 | **日志不再写绝对路径** | 227 | 金标语料去掉真实城市名；`retrieval.log` 与宿主日志只记库名 |
+| v0.15.0 | **自审工具 + 安全审阅技能卡** | 234 | 把「用血换来的规矩」变成可执行的静态检查，接进 CI |
 
-**当前规模**：70 个文件 / 12,133 行（`lib` 34 / 6,337 · `scripts` 8 / 1,669 · `test` 28 / 4,127）。
-测试 97 → 227（**+130**）。
+**当前规模**：74 个文件（`lib` 34 · `scripts` 11 · `test` 29 · `skills` 1 · `docs` 7）。
+测试 97 → 234（**+137**）。
 
 ---
 
@@ -260,6 +261,20 @@ DSH 0.2.1-rc.3 → rc.5，插件 `fiberPhase: failed`，**对话正常但她静�
 | `docs/DESCRIPTION.md` | 一句话 / 三句话 / 英文摘要 / **GitHub About 与 5 个 topics**（现成可抄）/ 四个常见问题的标准答法 |
 | `docs/architecture.png` | 一张图：用户消息 → 模式判定 → 检索 → 装配（有预算）→ 注入块，以及"只读 active 且未失效的点 / 写则逐字入档"两条箭头。README 与 `docs/ARCHITECTURE.md` 都引用了它 |
 | **SPDX 头** | 70 个源文件（`lib/` 34 + `scripts/` 8 + `test/` 28）顶部加 `// SPDX-License-Identifier: MIT`；shebang 之后插入，幂等（已有则跳过）。加完 227 测试仍全绿——它只是注释 |
+
+### v0.15.0 · 把"用血换来的规矩"变成可执行的检查（234 测试）
+
+起因：开源之后会有人提 PR，而**这个项目的坑大多不是"代码写错了"，是"又踩回同一个坑"**——比如把 `ctx.` 写到 host.js 外面、在 `lib/` 里加网络调用、把密钥提交上去、给 `10_archive` 直接写文件。这些都在 CHANGELOG 里付过代价，但光靠文档拦不住人（也拦不住我自己）。
+
+- **`scripts/audit-self.mjs`**（静态、离线、只读、零依赖）：11 条规则，每条都带"为什么"和"怎么修"——
+  `secret-in-repo`（真密钥）、`personal-path`（用户名路径）、`dynamic-code`（eval）、`unsafe-deserialize`（pickle / 裸 yaml.load）、`network-in-lib`（lib 里禁止联网）、`ctx-outside-host`（宿主口子越界）、`archive-write`（直写真相层）、`points-bypass`（绕过草稿直写记忆点）、`silent-catch`（静默吞错）、`agpl-text`（AGPL 传染）、`zero-dependency`（破坏零依赖）。
+  支持 `--json` / `--out report.md` / `--strict`，行尾写 `audit-self:ignore` 可抑制。
+- **两个真 bug 是负向测试抓出来的**（先写"干净仓库必须 0 报错"，再造一个故意写坏的仓库验证它真的会报）：
+  ① 按 `\n` 切行后每行尾部留着 `\r`，`//.*$` 匹配不到 → **注释里举例的 `ctx.on(...)` 被当成越界**；改按 `/\r?\n/` 切并剥 `\r`。
+  ② 读 `package.json` 没剥 BOM（PowerShell 的 `Set-Content -Encoding UTF8` 会写 BOM）→ `JSON.parse` 抛错、被空 `catch` 吞掉 → **"破零依赖"这条漏报**。修法不止剥 BOM：读不出来本身也变成一个 finding（`package-json-unreadable`）——因为"静默吞错"正是这套规则要防的病。
+- **`skills/security-review/SKILL.md`**：给 agent 用的**过程技能卡**（不是攻击工具）。七层检查清单（注入面 / 真相层 / 归档完整性 / 秘密与隐私 / 依赖与供应链 / 网络与遥测 / 错误处理）、**10 条误报识别**、报告格式（必须带行号+原文，写不出证据就不算 finding）、禁止事项（不扫第三方目标、不发请求、不自动改代码、未验证的结论不进 `35_ability`）。文末写了"想注册进 DSH 要改哪一行"，但**默认不注册**——技能列表变了等于她多一个入口，要改就显式改。
+- **接进 CI**：第 5 步 `npm run audit`，自审 0 个 error 才放行。
+- 7 个新测试（`test/audit-self.test.js`）钉住上面两个 bug：CRLF 下注释不误报、带 BOM 的 `package.json` 仍能报零依赖破坏、真问题必须抓齐 5 类、占位符不算密钥、`--json` 结构稳定、**本仓库自己必须 0 报错**。
 
 ---
 

@@ -1,7 +1,7 @@
-# fish-memory-plugin v0.14.1
+# fish-memory-plugin v0.15.0
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-227%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-234%20passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependencies-0-blueviolet)
 
 **Local-first long-term memory for AI companions** · 给 AI 伴侣的本地长期记忆插件。
@@ -31,7 +31,7 @@ node scripts/memory.mjs init /tmp/my-memories      # 建一个记忆库（Window
 node scripts/memory.mjs check  --dir /tmp/my-memories
 node scripts/memory.mjs audit  --dir /tmp/my-memories
 node scripts/memory.mjs gold                       # 金标自测：20/20
-npm test                                           # 227 个单测
+npm test                                           # 234 个单测
 ```
 
 你应该看到：
@@ -41,7 +41,7 @@ npm test                                           # 227 个单测
 校验：0 条，0 条有硬错误
 审计通过
 金标：20/20（100%，下限 80%）  阈值 0.8  最小边际 0.68  负例误命中 0
-ℹ tests 227 / pass 227 / fail 0
+ℹ tests 234 / pass 234 / fail 0
 ```
 
 然后打开 `/tmp/my-memories` 看看——**那就是全部**：`00_core/`（灵魂与规则）、`10_archive/`（逐字对话）、`30_points/`（记忆点）、`50_log/`（日志）。没有数据库、没有隐藏状态。
@@ -85,7 +85,7 @@ markdown for the soul/rules/memories, append-only JSONL for the raw transcript.
 - **The archive is append-only** with a `prev/hash` chain; startup verifies it and reports any file that changed.
 - **Injection is budgeted**: 700 tok core / 300 tok body / 2400 tok abilities, degrading `full → summary → index line` instead of truncating blindly.
 - **Everything that reaches the model is sanitized** (fake `<!--` markers split, likely secrets redacted).
-- **227 tests**, a 12-gate self-check, and a 20-query gold set that CI runs on every PR.
+- **234 tests**, a 12-gate self-check, a 20-query gold set, and a self-audit that encodes the project's own security rules — all run on every PR.
 
 It plugs into [DeepSeek Harness](https://github.com/) (DSH) as a bundle; the CLI (`scripts/memory.mjs`)
 works standalone on any folder. License: MIT.
@@ -100,6 +100,8 @@ works standalone on any folder. License: MIT.
 | [docs/DESCRIPTION.md](docs/DESCRIPTION.md) | 想转发/引用本项目的人 —— 一句话、英文摘要、GitHub About 与 topics 现成可抄 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 想提 PR 的人 —— 六条硬规矩、自查命令 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 想改代码的人 —— 三层结构、一轮对话的数据流、装配顺序 |
+| [skills/security-review/SKILL.md](skills/security-review/SKILL.md) | 想审自己代码的人 —— 七层检查清单、误报识别、报告格式；配套 
+pm run audit |
 | [docs/MAINTAINING.md](docs/MAINTAINING.md) | 维护者 —— 发版仪式、"改了为什么不生效" |
 | [SECURITY.md](SECURITY.md) | 报漏洞的人 —— 攻击面与"不算漏洞"的清单 |
 | [CHANGELOG](CHANGELOG.md) | 想看"为什么这么改"的人 —— 每版的动机与踩过的坑 |
@@ -773,7 +775,7 @@ node scripts/memory.mjs invalidate M-2026-10-28-001 --at 2026-10-30 --reason "�
 
 ## 测试
 
-**227 个单测**（含 v0.5.9 的权重可配、金标 20 条 + 6 条负例、单字兜底闸门，
+**234 个单测**（含 v0.5.9 的权重可配、金标 20 条 + 6 条负例、单字兜底闸门，
 v0.5.10 的宿主适配层、降级自检、channel-gap，v0.5.12 的稀疏补权与 IDF，
 以及 v0.6.0 的快照对比、尸检报告、保险丝，v0.7.0 的注入面净化，v0.8.0 的档案完整性与备份保留，v0.9.0 的隐私体检，v0.10.0 的 schema 版本/相似度告警/竞态自愈，v0.11.0 的真删除，v0.12.0 的 vault 视图，v0.13.0 的自述闸门，v0.13.1 的提醒文案与运行时版本，v0.13.2 的注入 diff 与 lib 指纹，v0.13.3 的演示素材出库与跨天基线，v0.14.0 的冲突可见 / 坏点不静默 / 事实失效），不启动宿主：
 

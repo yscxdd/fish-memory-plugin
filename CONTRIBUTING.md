@@ -11,6 +11,7 @@ npm test                # 227 个单测，约 1 秒，不需要 DSH、不联网
 node scripts/memory.mjs verify      # 包自检：必需文件、BOM、导出 apply
 node scripts/memory.mjs hostcheck   # 宿主口子：17 个都在、lib/ 没越界访问 ctx
 node scripts/memory.mjs gold        # 金标：20/20、负例 0、边际 ≥ 0.68
+node scripts/audit-self.mjs         # 自审：项目自己的安全规矩（静态、离线）
 ```
 
 零依赖：**没有 `npm install` 这一步**，也不该有。`package.json` 里没有 `dependencies` 是刻意的（见契约 §11.5）。
@@ -41,6 +42,7 @@ npm test                        # 全绿
 node scripts/memory.mjs verify  # 无 BOM、文件齐
 node scripts/memory.mjs hostcheck
 node scripts/memory.mjs gold    # 别跌破 16/20
+node scripts/audit-self.mjs     # 自审：0 个 error
 ```
 
 - 每个修复/功能配至少一个测试；**修 bug 的测试要先能复现 bug**（先红后绿）。

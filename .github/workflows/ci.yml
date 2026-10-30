@@ -42,3 +42,7 @@ jobs:
       # 金标召回：20 条改写查询 + 6 条负例；低于 16/20 直接失败
       - name: gold set
         run: node scripts/memory.mjs gold
+
+      # 自审：项目自己的安全规矩（静态、离线、只读）
+      - name: self audit
+        run: npm run audit
