@@ -1,5 +1,9 @@
 # fish-memory-plugin v0.14.1
 
+[![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
+![tests](https://img.shields.io/badge/tests-227%20passing-brightgreen)
+![deps](https://img.shields.io/badge/dependencies-0-blueviolet)
+
 **Local-first long-term memory for AI companions** · 给 AI 伴侣的本地长期记忆插件。
 零依赖（只用 Node 内置模块）、**无向量库**、无遥测、不发网络请求；记忆是你能直接 `cat` 的 markdown，对话是只追加的 JSONL。
 
@@ -12,6 +16,37 @@
 ![一轮对话里记忆怎么走上来的：用户消息 → 模式判定 → 检索 → 装配（有预算） → 注入块；每一轮只从记忆库读 active 且未失效的点，写则逐字入档](docs/architecture.png)
 
 > **这个目录是可丢弃的。** 删掉它 + 从 profile 移除两行，就完全消失，记忆库一个字节不动。
+
+---
+
+## Quickstart · 2 分钟跑通（**不需要 DSH**）
+
+只需要 Node ≥ 18。没有任何 `npm install`（零依赖）：
+
+```bash
+git clone https://github.com/yscxdd/fish-memory-plugin.git
+cd fish-memory-plugin
+
+node scripts/memory.mjs init /tmp/my-memories      # 建一个记忆库（Windows: D:\mem）
+node scripts/memory.mjs check  --dir /tmp/my-memories
+node scripts/memory.mjs audit  --dir /tmp/my-memories
+node scripts/memory.mjs gold                       # 金标自测：20/20
+npm test                                           # 227 个单测
+```
+
+你应该看到：
+
+```
+✓ 已建库：/tmp/my-memories
+校验：0 条，0 条有硬错误
+审计通过
+金标：20/20（100%，下限 80%）  阈值 0.8  最小边际 0.68  负例误命中 0
+ℹ tests 227 / pass 227 / fail 0
+```
+
+然后打开 `/tmp/my-memories` 看看——**那就是全部**：`00_core/`（灵魂与规则）、`10_archive/`（逐字对话）、`30_points/`（记忆点）、`50_log/`（日志）。没有数据库、没有隐藏状态。
+
+要接到 DSH 上（让它真的在对话里生效），看下面的「安装」。
 
 ---
 
