@@ -118,3 +118,38 @@ test('实际仓库：本仓库自己必须干净（否则 CI 会红）', () => {
   assert.equal(json.counts.error, 0, JSON.stringify(json.findings.filter((f) => f.severity === 'error'), null, 2))
   assert.equal(code, 0)
 })
+
+test('静默 catch：光秃秃的 ignore 要报，写了理由的不报（单行/多行都要覆盖）', () => {
+  const dir = repo({
+    'package.json': JSON.stringify({ name: 'x', license: 'MIT' }),
+    'lib/bare-single.js': 'try { a() } catch { /* ignore */ }\n',
+    'lib/bare-multi.js': 'try {\n  b()\n} catch (e) {\n  // ignore\n}\n',
+    'lib/explained-single.js': 'try { c() } catch { /* ignore: 清理失败不影响结果 */ }\n',
+    'lib/explained-multi.js': 'try {\n  d()\n} catch (e) {\n  // ignore: 探不到就当没有\n}\n',
+  })
+  const { json } = run(dir)
+  const files = json.findings.filter((f) => f.rule === 'silent-catch').map((f) => f.file).sort()
+  assert.deepEqual(files, ['lib/bare-multi.js', 'lib/bare-single.js'], `只该报两条裸 ignore：${JSON.stringify(files)}`)
+})
+
+test('span 窗口不该把同一条报多次（曾一次 catch 报 6 次）', () => {
+  const dir = repo({
+    'package.json': JSON.stringify({ name: 'x', license: 'MIT' }),
+    'lib/one.js': 'try {\n  a()\n} catch {\n  /* ignore */\n}\n',
+  })
+  const { json } = run(dir)
+  const f = json.findings.find((x) => x.rule === 'silent-catch')
+  assert.ok(f, '应当报出来')
+  assert.equal(f.count, 1, `同一条 catch 只能算一次，实际 ${f.count}`)
+})
+
+test('TODO 写在注释里也要统计（曾因先剥注释而恒为 0）', () => {
+  const dir = repo({
+    'package.json': JSON.stringify({ name: 'x', license: 'MIT' }),
+    'lib/todo.js': '// TODO: 收口这个分支\n// FIXME: 另说\n',
+  })
+  const { json } = run(dir)
+  const f = json.findings.find((x) => x.rule === 'todo-left')
+  assert.ok(f, '注释里的 TODO 应当被统计')
+  assert.equal(f.count, 2)
+})

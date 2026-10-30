@@ -1,7 +1,7 @@
-# fish-memory-plugin v0.15.0
+# fish-memory-plugin v0.15.1
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-234%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-243%20passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependencies-0-blueviolet)
 
 **Local-first long-term memory for AI companions** · 给 AI 伴侣的本地长期记忆插件。
@@ -31,7 +31,7 @@ node scripts/memory.mjs init /tmp/my-memories      # 建一个记忆库（Window
 node scripts/memory.mjs check  --dir /tmp/my-memories
 node scripts/memory.mjs audit  --dir /tmp/my-memories
 node scripts/memory.mjs gold                       # 金标自测：20/20
-npm test                                           # 234 个单测
+npm test                                           # 243 个单测
 ```
 
 你应该看到：
@@ -41,7 +41,7 @@ npm test                                           # 234 个单测
 校验：0 条，0 条有硬错误
 审计通过
 金标：20/20（100%，下限 80%）  阈值 0.8  最小边际 0.68  负例误命中 0
-ℹ tests 234 / pass 234 / fail 0
+ℹ tests 243 / pass 243 / fail 0
 ```
 
 然后打开 `/tmp/my-memories` 看看——**那就是全部**：`00_core/`（灵魂与规则）、`10_archive/`（逐字对话）、`30_points/`（记忆点）、`50_log/`（日志）。没有数据库、没有隐藏状态。
@@ -85,7 +85,7 @@ markdown for the soul/rules/memories, append-only JSONL for the raw transcript.
 - **The archive is append-only** with a `prev/hash` chain; startup verifies it and reports any file that changed.
 - **Injection is budgeted**: 700 tok core / 300 tok body / 2400 tok abilities, degrading `full → summary → index line` instead of truncating blindly.
 - **Everything that reaches the model is sanitized** (fake `<!--` markers split, likely secrets redacted).
-- **234 tests**, a 12-gate self-check, a 20-query gold set, and a self-audit that encodes the project's own security rules — all run on every PR.
+- **243 tests**, a 20-query gold set, a static host-surface check, and a self-audit that encodes the project's own security rules — all run on every PR. The 12-gate `selfcheck` needs a real memory library, so it runs locally (and **fails** on a version or runtime mismatch, instead of reporting green).
 
 It plugs into [DeepSeek Harness](https://github.com/) (DSH) as a bundle; the CLI (`scripts/memory.mjs`)
 works standalone on any folder. License: MIT.
@@ -289,6 +289,21 @@ fish-memory: 注入 N 条 / 约 XXX tok
 因为老进程内存里那份会话对象还是旧的，下一次 `touchSession` 会把整份写回去。
 所以清洗要做在**读取路径**上（`MemoryStore.session()` + `renderWorkMemory()`），
 不能只改文件。当前进程要等下次重启才会走新读取路径。
+
+---
+
+## v0.15.1 修了什么
+
+三处「装了也验不出来」的地方。共同点是：**工具给了绿，其实没验**。
+
+| 问题 | 现象 | 修法 |
+|---|---|---|
+| **`版本一致` 永远打 ✓** | 这一行的结论是写死的 `true`，实测输出 `✓ 版本一致  源码 v0.15.0 · profile 0.14.1` —— 两个版本号明明不一致，勾照打 | 判据抽到 `lib/envcheck.js`：两边都有且不同 = **失败**；没设 `DSH_PROFILE_DIR` 才跳过 |
+| **`运行时版本` 只是提醒，不计入退出码** | "磁盘 0.15.0、进程 0.14.1"时仍然 `✓ 所有闸门通过` + 退出码 0。而"改了 lib/ 没重启"正是本仓库反复栽的坑 | 同样提到 `fail` 级：指纹不一致 = 失败，退出码 1 |
+| **`memory erase` 没上锁** | reset/forget/ingest 都走 `withLock`，只有 erase 直接 `applyErase`。它要「读整份档案 → 删行 → 重算链 → rename 覆盖」，插件同时在 append 时，落在窗口里的消息会被静默丢掉，且 `archive-manifest` 会跟着重写，事后查不出来 | `withLock(dir, () => applyErase(...))`；顺带修墓碑 `hash8`（记原记录 hash 前 8 位，不再二次 sha256）和 `memory erased` 里看不到 archive 级记录的问题 |
+
+`selfcheck` 现在的语义是：**只证明"代码与库自洽"**，而且**版本/运行时不一致时不给绿**。
+运行前先 `sync` 再重启，否则它会（正确地）拦你。
 
 ---
 

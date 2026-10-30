@@ -448,7 +448,11 @@ function cmdErase(params) {
   }
 
   const withPoints = flags.has('--cascade') ? [...plan.points, ...plan.refs.map((r) => ({ id: r.id, file: r.file }))] : plan.points
-  const r = applyErase(dir, { ...plan, points: withPoints }, { reason })
+  // 必须上锁（v0.15.1）：erase 是"读整份档案 → 删行 → 重算链 → rename 覆盖"，
+  // 插件正在同一份文件上 append 时，落在窗口里的消息会被静默丢掉，
+  // 而且 archive-manifest 会跟着重写，事后的完整性检查看不出来。
+  // reset / forget / ingest 早就走了 withLock，只有这条最该锁的路漏了。
+  const r = withLock(dir, () => applyErase(dir, { ...plan, points: withPoints }, { reason }))
   for (const w of r.warnings) console.error(`! ${w}`)
   console.log(`\n✓ 删掉 ${r.removed} 条消息、${r.points} 条记忆点，改写 ${r.backups} 个备份文件；链已重算，墓碑在 50_log/erasure.log`)
   if (!reason) console.log('  （没写 --reason：墓碑里原因是空的，以后自己会看不懂为什么删的）')
@@ -463,12 +467,14 @@ function cmdErased() {
   }
   for (const r of rows) {
     const what =
-      r.kind === 'message'
-        ? `消息 ${r.id}${r.plat && r.plat !== r.id ? `（平台 ${r.plat}）` : ''}（hash:${r.hash8 || '?'}）`
-        : `记忆点 ${r.id}`
+      r.kind === 'archive'
+        ? `档案 ${r.file}（删了 ${r.removed} 行：${r.before?.count ?? '?'} → ${r.after?.count ?? '?'}）`
+        : r.kind === 'message'
+          ? `消息 ${r.id}${r.plat && r.plat !== r.id ? `（平台 ${r.plat}）` : ''}（hash:${r.hash8 || '?'}）`
+          : `记忆点 ${r.id}`
     console.log(`${r.at || '?'}  ${what}  ${r.reason || '（无原因）'}`)
   }
-  console.log(`\n共 ${rows.length} 条（最近 30 条，倒序；只含 id/时间/原因，不含原文）`)
+  console.log(`\n共 ${rows.length} 条（倒序；只含 id/时间/原因，不含原文）`)
 }
 
 // ── vault ──────────────────────────────────────────────────────

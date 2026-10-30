@@ -86,6 +86,9 @@ test('预览：列出要删的消息、认出被引用的点，且不落盘', as
   const plan = planErase(dir, { messageIds: ['msg-b'] })
   assert.equal(plan.messages.length, 1)
   assert.equal(plan.messages[0].hash8.length, 8)
+  // v0.15.1：墓碑记的是**原记录 hash 的前 8 位**，不是再 sha256 一次
+  const original = rowsOf(onlyJsonl(dir)).find((r) => r.msgid_plat === 'msg-b')
+  assert.equal(plan.messages[0].hash8, original.hash.slice(0, 8))
   assert.deepEqual(
     plan.refs.map((r) => r.id),
     ['M-2026-10-30-001'],
@@ -112,6 +115,17 @@ test('真删一条：原文没了、链仍可校验、墓碑不含原文', async
   assert.equal(tomb.reason, '里面有一句密钥')
   assert.equal(tomb.hash8.length, 8)
   assert.equal(readFileSync(join(dir, '50_log', 'erasure.log'), 'utf8').includes('hunter2'), false, '墓碑不含原文')
+})
+
+test('墓碑里能看到"哪份文件被改写过"（archive 级，v0.15.1）', async () => {
+  const dir = await seed()
+  applyErase(dir, planErase(dir, { messageIds: ['msg-b'] }), { reason: '审计' })
+  const arch = readErasureLog(dir).filter((t) => t.kind === 'archive')
+  assert.equal(arch.length, 1, '以前 readErasureLog 会把 archive 行滤掉，memory erased 里看不见')
+  assert.equal(arch[0].removed, 1)
+  assert.equal(arch[0].before.count - arch[0].after.count, 1)
+  assert.equal(arch[0].reason, '审计')
+  assert.match(arch[0].file, /\.jsonl$/)
 })
 
 test('删完再启动：完整性检查不该把这次授权删除当成篡改', async () => {

@@ -133,14 +133,27 @@ const RULES = [
   {
     id: 'silent-catch',
     severity: 'warn',
+    raw: true, // 证据就在注释里（/* ignore */），剥掉注释这条规则就死了
+    span: 3, // catch { 和 /* ignore */ 经常不在同一行
     why: 'catch 里静默忽略 = 故障看起来像成功（mem0 的教训：分不清"没有"和"坏了"）',
     fix: '至少写日志或计数；影响用户结论的必须抛出',
-    test: (line) => /\bcatch\s*(\([^)]*\))?\s*\{\s*(\/\*|\/\/)\s*(ignore|ignore[ds]?|silent|noop|swallow)/i.test(line),
+    // 只抓"光秃秃的 ignore"：注释正文**整段只有** ignore/silent/noop/swallow 才算静默；
+    // 写成 `/* ignore: 为什么 */` 或 `// ignore 因为…` 就说明想过，不算。
+    // 注释正文整段匹配，避免"行尾锚"把 `catch { /* ignore */ }` 这种单行写法漏掉。
+    test: (span) => {
+      if (!/\bcatch\b/.test(span)) return false
+      for (const m of span.matchAll(/\/\*([\s\S]*?)\*\/|\/\/([^\n]*)/g)) {
+        const body = String(m[1] ?? m[2] ?? '').trim()
+        if (/^(ignore[ds]?|silent|noop|swallow)$/i.test(body)) return true
+      }
+      return false
+    },
     scope: (rel) => isLib(rel),
   },
   {
     id: 'todo-left',
     severity: 'info',
+    raw: true, // TODO 通常写在注释里
     skipSelf: true,
     why: '统计用：TODO/FIXME 太多说明有未收口的改动',
     fix: '要么做，要么写进 issue',
@@ -197,11 +210,14 @@ for (const path of files) {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
       // 代码类规则先剥注释：注释里举例的攻击代码不是真调用
-      const probe = rule.raw ? line : codeOnly(line)
+      const window = rule.span ? lines.slice(i, i + rule.span).join(' ') : line
+      const probe = rule.raw ? window : codeOnly(window)
       if (!rule.test(probe)) continue
       if (/audit-self:ignore/.test(line) || /audit-self:ignore/.test(lines[i + 1] || '')) continue
       hitCount++
       if (hits.length < 3) hits.push({ line: i + 1, text: line.trim().slice(0, 160) })
+      // span 规则：跳过这个窗口剩余的行，否则同一条会被重复计 2–3 次
+      if (rule.span) i += rule.span - 1
     }
     if (hitCount === 0) continue
     findings.push({

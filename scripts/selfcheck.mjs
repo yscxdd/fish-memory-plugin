@@ -28,6 +28,7 @@ import { checkArchive } from '../lib/integrity.js'
 import { privacyReport } from '../lib/privacy.js'
 import { runGold } from '../lib/goldset.js'
 import { fingerprintDir } from '../lib/util.js'
+import { runtimeGate, versionGate } from '../lib/envcheck.js'
 import { verifyPackage } from '../lib/verify.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -145,11 +146,11 @@ if (!existsSync(dir)) {
   try {
     const pkgVersion = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf8')).version
     const profilePkg = join(process.env.DSH_PROFILE_DIR || '', 'node_modules', 'dsh-fish-memory', 'package.json')
-    let installed = '未在 profile 里找到'
-    if (process.env.DSH_PROFILE_DIR && existsSync(profilePkg)) {
-      installed = JSON.parse(readFileSync(profilePkg, 'utf8')).version
-    }
-    add('版本一致', true, `源码 v${pkgVersion} · profile ${installed}（环境变量 DSH_PROFILE_DIR 未设时跳过比对）`, 'warn')
+    const checked = Boolean(process.env.DSH_PROFILE_DIR) && existsSync(profilePkg)
+    const installed = checked ? JSON.parse(readFileSync(profilePkg, 'utf8')).version : undefined
+    // v0.15.1：这条以前写死 true，两个版本号不一致也打 ✓（判据见 lib/envcheck.js）
+    const v = versionGate({ pkgVersion, installedVersion: installed, checked })
+    add('版本一致', v.ok, v.detail, v.level)
 
     // ⑫ 运行时版本：磁盘一致 ≠ 进程里也一致（v0.13.1）
     // 这个项目反复栽在"改了源码但没生效"上；唯一知道进程里是哪一版的地方，是它自己启动时写的 host.log。
@@ -163,26 +164,12 @@ if (!existsSync(dir)) {
         rec = null
       }
     }
-    const live = rec?.plugin ?? null
     const liveLib = rec?.lib ?? null
     const localLib = fingerprintDir(join(pkgRoot, 'lib'))
-    if (liveLib) {
-      // 指纹比版本号诚实：只 bump 版本不动 lib/ 时，进程里的代码其实没变，不该报"要重启"
-      if (liveLib === localLib) {
-        add('运行时版本', true, `进程里的 lib 与磁盘一致（lib ${localLib}，进程 v${live}）`, 'warn')
-      } else {
-        add(
-          '运行时版本',
-          false,
-          `进程 lib ${liveLib}（v${live}）· 磁盘 lib ${localLib}（v${pkgVersion}）→ 关/开一次插件才生效`,
-          'warn',
-        )
-      }
-    } else if (live !== null) {
-      add('运行时版本', true, `进程 v${live}，启动记录没有 lib 指纹（v0.13.2 之前）`, 'warn')
-    } else {
-      add('运行时版本', true, 'host.log 里没有版本字段（v0.13.1 之前的启动记录）', 'warn')
-    }
+    // v0.15.1：以前这条是 warn（不计入失败），于是"磁盘新、进程旧"仍然「所有闸门通过」+ exit 0。
+    // 指纹比版本号诚实：只 bump 版本不动 lib/ 时，进程里的代码其实没变，不该报"要重启"。
+    const rt = runtimeGate({ liveLib, localLib, liveVersion: rec?.plugin ?? null, diskVersion: pkgVersion })
+    add('运行时版本', rt.ok, rt.detail, rt.level)
   } catch {
     /* 环境信息拿不到不算失败 */
   }
