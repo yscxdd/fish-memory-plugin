@@ -234,6 +234,15 @@ DSH 0.2.1-rc.3 → rc.5，插件 `fiberPhase: failed`，**对话正常但她静�
 - 1 个测试改断言：`entry.dir` 必须 **undefined**、`entry.lib === basename(dir)`（盯住"绝对路径不许再进日志"）。
 - **要把这次改动生效，仍然要关/开一次插件**——因为改了 `lib/index.js`。
 
+**2026-10-31 · 开源上线（首次公开，v0.14.1 之后）**
+
+- 仓库公开：`github.com/yscxdd/fish-memory-plugin`（MIT）。公开前核过**全部 6 个提交的历史**，任何版本里都没有记忆库/打包/日志文件。
+- **被 CI 抓到的第一个跨平台 bug**：`test/plugin.test.js` 用 `'D:/mem'` 当绝对路径 fixture，在 Linux 上 `isAbsolute` 为 false，代码走另一支 → 只在 Windows 绿。改为 `resolve('/', ...)` 生成平台绝对路径，语义不变。
+- **CI 自身的 YAML bug**：`run: node -p "JSON.stringify({ platform: ... })"` 里的 `冒号+空格` 会被 YAML 当映射解析，整份 workflow 变成非法文件。改为单引号包住，并用 PyYAML 校验后才推。
+- CI 增 `environment` 步骤（打印 platform/node/arch），测试改 `--test-reporter=spec`：红了能一眼看出挂哪条、在什么平台。
+- 可发现性：`package.json` 补 15 个 keywords 与英文 description；README 首行改英文定位句 + 加与 mem0 / Letta(MemGPT) / Zep / basic-memory 的**对比表**和「适合谁/不适合谁」；新增 `docs/DESCRIPTION.md`（About 三种变体、12 个 topics、仓库名改名对照、发布帖模板）。
+- README 增 CI/测试/依赖三个徽章与 **2 分钟 Quickstart（不需要 DSH）**：`init → check → audit → gold`。
+- 上线后发现 About 的 Topics 为 0（最大的可发现性短板），补 12 个后实测 `topic:ai-memory` 搜索已能命中本仓库。
 **同日：仓库脚手架（不改版本号，也不改运行时）** —— 目标是"陌生人能直接贡献"：
 
 | 加了什么 | 解决什么 |
