@@ -1,0 +1,44 @@
+{
+  "name": "dsh-fish-memory",
+  "version": "0.14.1",
+  "private": true,
+  "type": "module",
+  "description": "大肥鱼记忆库的薄插件：注入 + 双向记档 + remember 技能，其余全在文件上",
+  "main": "lib/index.js",
+  "engines": {
+    "node": ">=18",
+    "dsh": ">=0.2.1-rc.3 <0.3.0"
+  },
+  "files": [
+    "lib/**",
+    "scripts/**",
+    "samples/**",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "verify": "node scripts/memory.mjs verify",
+    "hostcheck": "node scripts/memory.mjs hostcheck",
+    "gold": "node scripts/memory.mjs gold",
+    "selfcheck": "node scripts/selfcheck.mjs",
+    "preflight": "node scripts/preflight-open.mjs",
+    "preview": "node scripts/preview.mjs ../fish-memory",
+    "sync": "node scripts/sync.mjs",
+    "memory": "node scripts/memory.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compat": {
+      "verified": "0.2.1-rc.5",
+      "surface": 17,
+      "updated": "2026-10-30",
+      "api": "lib/host.js 的 HOST_POINTS（17 条）",
+      "howToCheck": "memory hostcheck（静态） / memory compat（快照对比 + 尸检）"
+    }
+  },
+  "license": "MIT"
+}

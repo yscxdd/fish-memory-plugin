@@ -1,0 +1,23 @@
+# 这个仓库只装插件，不装记忆。
+#
+# 记忆库（`fish-memory/`）在插件目录**旁边**，里面有逐字对话、核心层、自述、日志。
+# 它永远不该进仓库——一旦提交，历史里就删不干净了（GitHub 会缓存、会被 fork）。
+fish-memory/
+fish-memory-backups/
+fish-memory-backup-*/
+
+# 记忆库里的派生/日志目录（万一有人把库放进了仓库根，也多一道闸）
+50_log/
+20_index/
+
+# 打包产物
+*.zip
+
+# inject-diff 的基线（含她读到过的文本快照）
+.inject-baseline.json
+
+# 依赖与系统垃圾
+node_modules/
+*.tmp
+.DS_Store
+Thumbs.db

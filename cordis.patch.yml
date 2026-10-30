@@ -1,0 +1,9 @@
+# fish-memory bundle layer.
+#
+# 由 package.json 的 dsh.bundle.patch 声明。
+# 卸载：删掉整个 fish-memory-plugin 目录，并从 profile 的
+# package.json 里同时移除 dependencies 与 dsh.profile.bundles 两处，
+# 然后完全退出 DSH 重启。
+- insert:
+    - id: fish-memory
+      name: dsh-fish-memory
