@@ -18,6 +18,7 @@
  *   self-pack [YYYY-MM]     生成自述素材包 → 40_pending/_self/<月>.md
  *   self-promote <YYYY-MM>  人审闸门：校验 40_pending/_self/<月>.draft.md → 15_self/<月>.md
  *   invalidate <id> [--at YYYY-MM-DD] [--reason]  标记事实失效（boundary/promise 不许）
+ *   stats [--days 7] [--price 4] [--turns 100] [--json]   真实账：注入均值/分层占比/门控/命中/每轮成本
  *   asset add <文件> [--kind book|doc|transcript|image|audio|video] [--title 名字]   素材放库外，库里只留引用`n *   book add <文件> [--title 书名]｜book list｜book verify   书源：原文在库外，库里只留引用
  *   wakeup [--out <目录>] [--json]  生成唤醒包（五件，目标 ≤4000 tok）→ 90_snapshot/wakeup-YYYYMMDD/
  *   tokens [--days N] [--json]      每轮注入 token 的账（50_log/token.log）
@@ -68,7 +69,8 @@ import {
   assetSummary,
   patchAliases,
 } from '../lib/toolkit.js'
-import { addAsset, assetsRoot, listAssets, loadAssets, verifyAsset, parseAssetSource } from '../lib/assets.js'
+import { addAsset, assetsRoot, listAssets, loadAssets, retireAsset, unretireAsset, verifyAsset, parseAssetSource } from '../lib/assets.js'
+import { assetUsage, computeStats, estimateCost } from '../lib/stats.js'
 
 const argv = process.argv.slice(2)
 const dirIdx = argv.indexOf('--dir')
@@ -572,6 +574,41 @@ function cmdVault() {
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
 }
 
+// ── stats ─────────────────────────────────────────────────────
+/**
+ * 用真实日志算账（v0.24.0）：注入均值/中位/峰值 + 分层占比 + 门控与命中率 + 每轮成本。
+ * 只读 50_log 下的 token.log / retrieval.log，不写任何东西。
+ */
+function cmdStats() {
+  needDir()
+  const days = Number(flagValue('--days') || 7)
+  const s = computeStats(dir, { days })
+  if (flagValue('--json') !== undefined || argv.includes('--json')) {
+    console.log(JSON.stringify(s, null, 2))
+    return
+  }
+  const price = Number(flagValue('--price') || 4)
+  const turns = Number(flagValue('--turns') || 100)
+  const cost = estimateCost(s.injection, { yuanPerMTok: price, turnsPerDay: turns })
+  const yuan = (n) => `¥${n.toFixed(3)}`
+
+  console.log(`最近 ${s.days} 天 · ${s.turns} 轮（门控跳过 ${s.gate.skipped} · ${s.gate.skippedPct}%）`)
+  console.log(`注入 token：均值 ${s.injection.mean} · 中位 ${s.injection.median} · 峰值 ${s.injection.max}`)
+  const total = s.injection.mean || 1
+  for (const [k, v] of Object.entries(s.injection.layers).sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${k.padEnd(8)} ${String(v).padStart(5)} tok · 占 ${Math.round((v / total) * 100)}%`)
+  }
+  console.log(`检索：门控 ${s.retrieval.gated}/${s.retrieval.rows} 轮（${s.retrieval.gatedPct}%）· 命中 ${s.retrieval.hits} 轮（${s.retrieval.hitPct}%）· 平均命中 ${s.retrieval.avgRendered} 条`)
+  console.log(`丢弃：正文 ${s.retrieval.dropped} · 核心 ${s.retrieval.coreDropped}` + (s.retrieval.msMean == null ? '' : ` · 检索耗时均值 ${s.retrieval.msMean}ms`))
+  const usage = assetUsage(readPointFiles(dir, '30_points'), loadAssets(dir).books)
+  if (usage.length) {
+    console.log('素材：')
+    for (const u of usage) console.log(`  ${u.points > 0 ? '•' : '○'} ${String(u.kind || 'book').padEnd(10)} ${u.title}  ${u.points} 条点`)
+  }
+  console.log(`\n每轮成本（¥${price}/M 输入 · 按 ${turns} 轮/日）：${yuan(cost.perTurn)}/轮 · ${yuan(cost.perDay)}/日 · ${yuan(cost.perMonth)}/月`)
+  console.log('  （口径：只算插件注入，不含对话历史与输出；缓存命中时实际更低）')
+}
+
 // ── book ──────────────────────────────────────────────────────
 /**
  * 书源（v0.22.0）：**书在库外，库里只留读过的痕迹**。
@@ -603,9 +640,18 @@ function cmdBook(sub, arg) {
       return
     }
     for (const b of rows) {
-      console.log(`${b.present ? '✓' : '✗'} ${String(b.kind || 'book').padEnd(10)} ${b.id.padEnd(22)} ${b.title}  (${b.lines == null ? '非文本' : `${b.lines} 行`})`)
+      console.log(`${b.retired ? '⊘' : b.present ? '✓' : '✗'} ${String(b.kind || 'book').padEnd(10)} ${b.id.padEnd(22)} ${b.title}  (${b.lines == null ? '非文本' : `${b.lines} 行`})`)
     }
     console.log(`\n素材库根：${assetsRoot(dir)}`)
+    return
+  }
+  if (sub === 'retire' || sub === 'unretire') {
+    if (!arg) fail('用法：memory asset retire <id> [--reason 原因]')
+    const r = sub === 'retire'
+      ? retireAsset(dir, arg, { reason: flagValue('--reason') })
+      : unretireAsset(dir, arg)
+    if (!r.ok) fail(r.reason)
+    console.log(sub === 'retire' ? `✓ ${arg} 已退役（清单保留、点不动、引用仍可核对）` : `✓ ${arg} 已恢复`)
     return
   }
   if (sub === 'verify') {
@@ -1021,6 +1067,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'stats':
+    cmdStats()
     break
   case 'book':
   case 'asset':
