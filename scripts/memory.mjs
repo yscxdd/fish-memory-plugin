@@ -18,6 +18,7 @@
  *   self-pack [YYYY-MM]     生成自述素材包 → 40_pending/_self/<月>.md
  *   self-promote <YYYY-MM>  人审闸门：校验 40_pending/_self/<月>.draft.md → 15_self/<月>.md
  *   invalidate <id> [--at YYYY-MM-DD] [--reason]  标记事实失效（boundary/promise 不许）
+ *   book add <文件> [--title 书名]｜book list｜book verify   书源：原文在库外，库里只留引用
  *   wakeup [--out <目录>] [--json]  生成唤醒包（五件，目标 ≤4000 tok）→ 90_snapshot/wakeup-YYYYMMDD/
  *   tokens [--days N] [--json]      每轮注入 token 的账（50_log/token.log）
  *   reset --all [--yes]  开养前清零：档案/状态/日志/快照/技能/草稿（00_core 与文档不动）
@@ -64,6 +65,7 @@ import {
   validatePoint,
   writeIndex,
 } from '../lib/toolkit.js'
+import { addBook, bookPath, booksRoot, listBooks, loadBooks, verifyBook } from '../lib/books.js'
 
 const argv = process.argv.slice(2)
 const dirIdx = argv.indexOf('--dir')
@@ -107,7 +109,8 @@ function cmdCheck() {
     console.error(`✗ ${s.where}/${s.file}`)
     console.error(`    读不出来：${s.reason}`)
   }
-  const all = [...points, ...pending].map((p) => ({ id: p.id, ...validatePoint(p, { archive, points }) }))
+  const books = loadBooks(dir).books
+  const all = [...points, ...pending].map((p) => ({ id: p.id, ...validatePoint(p, { archive, points, books, dir }) }))
   let errors = 0
   let warned = 0
   for (const item of all) {
@@ -142,7 +145,7 @@ function cmdPromote(id) {
   if (!draft) fail(`40_pending 里没有 ${id}`)
 
   const points = readPointFiles(dir, '30_points')
-  const v = validatePoint(draft, { archive, points, allowSample: false })
+  const v = validatePoint(draft, { archive, points, allowSample: false, books: loadBooks(dir).books, dir })
   if (v.errors.length) {
     console.error(`✗ ${draft.id} 校验未通过：`)
     for (const e of v.errors) console.error(`    ${e.field}: ${e.message}`)
@@ -554,6 +557,60 @@ function cmdVault() {
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
 }
 
+// ── book ──────────────────────────────────────────────────────
+/**
+ * 书源（v0.22.0）：**书在库外，库里只留读过的痕迹**。
+ *
+ * 为什么不让书进库：整本几十万 token，进档案后每次翻档案都可能把原文捞出来；
+ * 而她要的不是背原文，是"记住几个有波动的地方 + 对整本书的感受"。
+ * 所以原文放在库外的书库目录（默认 <库>/../fish-memory-books），
+ * 库里只有 20_state/books.json（引用清单）和几个 source 指向书源的点。
+ */
+function cmdBook(sub, arg) {
+  needDir()
+  if (sub === 'add') {
+    if (!arg) fail('用法：memory book add <书文件> [--title 书名]')
+    const { entry, reused } = addBook(dir, arg, { title: flagValue('--title') })
+    console.log(reused ? '· 这本书已经登记过（同一 sha256），复用清单项' : '✓ 已登记书源（原文拷进库外书库目录，没进记忆库）')
+    console.log(`  id    ${entry.id}`)
+    console.log(`  书名  ${entry.title}`)
+    console.log(`  规模  ${entry.lines} 行 / ${Math.round(entry.bytes / 1024)} KB`)
+    console.log(`  书库  ${booksRoot(dir)}`)
+    console.log(`  引用写法：source: [book:${entry.id}#L123]`)
+    return
+  }
+  if (sub === 'list') {
+    const rows = listBooks(dir)
+    if (!rows.length) {
+      console.log('还没有登记过书。用法：memory book add <书文件> --title 书名')
+      return
+    }
+    for (const b of rows) console.log(`${b.present ? '✓' : '✗'} ${b.id.padEnd(28)} ${b.title}  (${b.lines} 行)`)
+    console.log(`\n书库根：${booksRoot(dir)}`)
+    return
+  }
+  if (sub === 'verify') {
+    const reg = loadBooks(dir).books
+    const rows = arg ? [[arg, reg[arg]]] : Object.entries(reg)
+    if (!rows.length) {
+      console.log('清单是空的')
+      return
+    }
+    let bad = 0
+    for (const [id, entry] of rows) {
+      const v = verifyBook(dir, entry)
+      if (v.ok) console.log(`✓ ${id}`)
+      else {
+        bad += 1
+        console.error(`✗ ${id}：${v.reason}`)
+      }
+    }
+    if (bad) process.exitCode = 1
+    return
+  }
+  fail('用法：memory book <add|list|verify> ...')
+}
+
 // ── wakeup ────────────────────────────────────────────────────
 /** 唤醒包（总设计 §11.1）：五件，目标 ≤4,000 tok。只读，不碰档案与记忆点 */
 function cmdWakeup() {
@@ -945,6 +1002,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'book':
+    cmdBook(params[0], params[1])
     break
   case 'wakeup':
     cmdWakeup()
