@@ -64,8 +64,11 @@ import {
   splitSegments,
   validatePoint,
   writeIndex,
+  assetAliases,
+  assetSummary,
+  patchAliases,
 } from '../lib/toolkit.js'
-import { addAsset, assetsRoot, listAssets, loadAssets, verifyAsset } from '../lib/assets.js'
+import { addAsset, assetsRoot, listAssets, loadAssets, verifyAsset, parseAssetSource } from '../lib/assets.js'
 
 const argv = process.argv.slice(2)
 const dirIdx = argv.indexOf('--dir')
@@ -113,6 +116,15 @@ function cmdCheck() {
   const all = [...points, ...pending].map((p) => ({ id: p.id, ...validatePoint(p, { archive, points, books, dir }) }))
   let errors = 0
   let warned = 0
+  // v0.23.1：素材"只有碎片、没有总评点"要提醒（不阻塞）——聊整体感受时没有打底
+  try {
+    const summary = assetSummary(points, loadAssets(dir).books)
+    for (const m of summary.missingKey) {
+      console.warn(`  ⚠ 素材 ${m.title}（${m.id}）记了 ${m.count} 条点，但没有总评点（key: true）`)
+    }
+  } catch {
+    /* 提醒失败不影响校验 */
+  }
   for (const item of all) {
     if (!item.errors.length) {
       // 没有硬错误但有告警：默认只报数，--json 才逐条展开（别把 check 刷成噪音）
@@ -155,7 +167,10 @@ function cmdPromote(id) {
   const dest = join(dir, '30_points', `${draft.id}.md`)
   if (existsSync(dest)) fail(`30_points 里已有 ${draft.id}`)
   mkdirSync(join(dir, '30_points'), { recursive: true })
-  const patched = draft.raw.replace(/^status:.*$/m, 'status: active')
+  // v0.23.1：素材点自动带别名（书名/类型），让"下次提书名"能命中；只补没有的，纯加法
+  const base = draft.raw.replace(/^status:.*$/m, 'status: active')
+  const aliased = patchAliases(base, assetAliases(draft, loadAssets(dir).books))
+  const patched = aliased.raw
   const tmp = `${dest}.tmp`
   writeFileSync(tmp, patched, 'utf8')
   renameSync(tmp, dest)
@@ -167,7 +182,7 @@ function cmdPromote(id) {
   mkdirSync(join(dir, '50_log'), { recursive: true })
   appendFileSync(
     join(dir, '50_log', 'consolidation.log'),
-    JSON.stringify({ at: new Date().toISOString(), action: 'promote', id: draft.id, from: '40_pending' }) + '\n',
+    JSON.stringify({ at: new Date().toISOString(), action: 'promote', id: draft.id, from: '40_pending', aliases_added: aliased.added }) + '\n',
     'utf8',
   )
   console.log(`✓ ${draft.id} 已提升为 active，索引已重建`)
