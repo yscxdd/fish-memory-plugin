@@ -175,6 +175,7 @@ test('配置：认得的键生效，越界 clamp，类型错丢弃，拼错的�
 })
 
 test('配置：不传就是空对象，不炸', () => {
-  assert.deepEqual(normalizeConfig(undefined), { inject: {}, retrieval: {}, pressure: {} })
-  assert.deepEqual(normalizeConfig('nope'), { inject: {}, retrieval: {}, pressure: {} })
+  const empty = { inject: {}, retrieval: {}, pressure: {}, emotion: {}, remind: {} }
+  assert.deepEqual(normalizeConfig(undefined), empty)
+  assert.deepEqual(normalizeConfig('nope'), empty)
 })
