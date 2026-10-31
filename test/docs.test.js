@@ -54,8 +54,16 @@ test('README 的功能表提到素材源与 stats；版本号与 package.json �
   assert.ok(readme.includes(`${pkg.version}`), 'README 里要有当前版本号')
 })
 
-test('契约里三条硬说法与代码一致', () => {
-  const contract = readFileSync(new URL('../../大肥鱼-插件接口契约-v1.0.md', import.meta.url), 'utf8')
+test('契约里三条硬说法与代码一致（契约不在仓库里时跳过）', (t) => {
+  // 契约是工作区文档，不随插件发布；CI 上没有这个文件，跳过而不是红
+  const url = new URL('../../大肥鱼-插件接口契约-v1.0.md', import.meta.url)
+  let contract = ''
+  try {
+    contract = readFileSync(url, 'utf8')
+  } catch {
+    t.skip('契约文件不在（CI/单独 clone 的情况）')
+    return
+  }
   assert.match(contract, /7\.5\.1 人格修订提案/, '契约要有 §7.5.1')
   assert.match(contract, /pin: hard/, '契约要写 pin 两档')
   assert.match(contract, /asset:<kind>:<id>/, '契约要写素材源形态')
