@@ -118,6 +118,16 @@ function cmdCheck() {
   const all = [...points, ...pending].map((p) => ({ id: p.id, ...validatePoint(p, { archive, points, books, dir }) }))
   let errors = 0
   let warned = 0
+  // v0.25.0：key 点只有 3 个名额（每轮全文注入），多的白写，还会挤掉底线与承诺
+  try {
+    const keyed = points.filter((x) => x.key === true)
+    if (keyed.length > 3) {
+      console.warn(`  ⚠ key 点有 ${keyed.length} 条，但注入只取前 3 条：${keyed.slice(3).map((x) => x.id).join(', ')}`)
+      console.warn('    （书评/总评建议用 pin: soft，把 key 留给底线与承诺）')
+    }
+  } catch {
+    /* 提醒失败不影响校验 */
+  }
   // v0.23.1：素材"只有碎片、没有总评点"要提醒（不阻塞）——聊整体感受时没有打底
   try {
     const summary = assetSummary(points, loadAssets(dir).books)
