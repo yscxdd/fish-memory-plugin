@@ -40,12 +40,12 @@ test('登记：原文进库外书库目录，清单里只有相对路径', () =>
   const { root, dir, book } = fixture()
   const { entry } = addBook(dir, book, { title: '雨夜' })
   assert.equal(entry.title, '雨夜')
-  assert.ok(entry.id.startsWith('book-'), 'id 必须是 ASCII（要写进 source 引用里）')
+  assert.ok(entry.id.startsWith('asset-'), 'id 必须是 ASCII（要写进 source 引用里）')
   assert.equal(entry.rel.includes('\\'), false, 'rel 是文件名，不带目录分隔符')
   assert.ok(!JSON.stringify(entry).includes(root), '清单里不许出现绝对路径')
 
   const rootDir = booksRoot(dir)
-  assert.equal(rootDir, join(root, 'fish-memory-books'), '书库默认在记忆库旁边（库外）')
+  assert.equal(rootDir, join(root, 'fish-memory-assets'), '素材库默认在记忆库旁边（库外）')
   assert.ok(verifyBook(dir, entry).ok, '刚拷进去的书应当可校验')
 
   const reg = loadBooks(dir)
@@ -168,19 +168,19 @@ test('audit：清单里有书就过；书文件被删 = 提醒（不阻塞）；
   )
   writeIndex(dir, buildIndex([{ id: 'M-2026-11-01-001', title: '雨夜那段', salience: 4, date: '2026-11-01', cluster: '读物', tags: [], status: 'active', type: 'event', summary: '读到这句她心里一沉。' }], { now: new Date('2026-11-01T00:00:00Z') }))
   const report = audit(dir)
-  const c = report.checks.find((x) => x.id === 'book_source')
+  const c = report.checks.find((x) => x.id === 'asset_source')
   assert.equal(c.ok, true, JSON.stringify(c))
   assert.equal(report.passed, true, '正常情况审计应通过')
 
   // 书文件不在了 → missing，但不算断链
-  writeFileSync(join(dir, '20_state/books.json'), JSON.stringify({ version: 1, books: { [entry.id]: { ...entry, rel: 'moved-away.txt' } } }), 'utf8')
-  const r2 = audit(dir).checks.find((x) => x.id === 'book_source')
+  writeFileSync(join(dir, '20_state/assets.json'), JSON.stringify({ version: 1, books: { [entry.id]: { ...entry, rel: 'moved-away.txt' } } }), 'utf8')
+  const r2 = audit(dir).checks.find((x) => x.id === 'asset_source')
   assert.equal(r2.missing, 1, JSON.stringify(r2))
   assert.equal(r2.ok, true, '书不在本机不该阻塞审计（换机器就可能没有）')
 
   // 清单里没有这本书 → 断链，阻塞
-  writeFileSync(join(dir, '20_state/books.json'), JSON.stringify({ version: 1, books: {} }), 'utf8')
-  const r3 = audit(dir).checks.find((x) => x.id === 'book_source')
+  writeFileSync(join(dir, '20_state/assets.json'), JSON.stringify({ version: 1, books: {} }), 'utf8')
+  const r3 = audit(dir).checks.find((x) => x.id === 'asset_source')
   assert.equal(r3.dangling, 1)
   assert.equal(r3.ok, false, '引用指向不存在的书 = 溯源断了')
   assert.equal(audit(dir).passed, false)
@@ -189,7 +189,7 @@ test('audit：清单里有书就过；书文件被删 = 提醒（不阻塞）；
 test('清单是纯 JSON、可被 check 读（不破坏现有命令）', () => {
   const { dir, book } = fixture()
   addBook(dir, book)
-  const raw = readFileSync(join(dir, '20_state/books.json'), 'utf8')
+  const raw = readFileSync(join(dir, '20_state/assets.json'), 'utf8')
   assert.ok(!raw.startsWith('\uFEFF'), '清单不能带 BOM')
   const reg = JSON.parse(raw)
   assert.equal(reg.version, 1)

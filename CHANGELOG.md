@@ -1,4 +1,4 @@
-# 变更年表 · 2026-10-30/31 · v0.5.8 → v0.22.1
+# 变更年表 · 2026-10-30/31 · v0.5.8 → v0.23.0
 
 > 这份是给"回看"用的：哪一版改了什么、为什么改、动了哪条不变量、当时有多少测试。
 > 交接看 `HANDOFF-2026-10-30.md`；契约细节看 `大肥鱼-插件接口契约-v1.0.md`。
@@ -35,9 +35,10 @@
 | v0.21.0 | **情绪状态机 + 到期提醒** | 333 | 迟滞带/缓入缓出/上限让位；`due` 字段；两块各 ≤40 tok |
 | v0.22.0 | **书源：喂小说但不进库** | 340 | 原文在库外；`source: book:<id>#L<n>`；原话逐字校验；断链阻塞审计 |
 | v0.22.1 | **不再依赖 inbox 事件** | 343 | query 改由 session/event 提供；消息去重；resetStats；selfcheck 认版本行 |
+| v0.23.0 | **素材源：book 泛化成 asset** | 348 | `asset:<kind>:<id>`；文本验逐字、图/音视频验 sha256；旧 book 兼容 |
 
-**当前规模**：81 个文件（`lib` 38 · `scripts` 11 · `test` 35 · `skills` 1 · `docs` 7）。
-测试 97 → 318（**+221**）。
+**当前规模**：83 个文件（`lib` 39 · `scripts` 11 · `test` 36 · `skills` 1 · `docs` 7）。
+测试 97 → 348（**+251**）。
 
 ---
 
@@ -379,6 +380,21 @@ DSH 0.2.1-rc.3 → rc.5，插件 `fiberPhase: failed`，**对话正常但她静�
 - **`resetStats()`**：`attachAt` 原来只在模块加载时定一次，热重载（插件管理器关/开、改 profile）时模块不重新 import → 宽限期一上来就过期，刚加载 **35ms** 就误报 channel-gap（实测 `17:47:10.822` 加载、`17:47:10.857` 报 gap）。现在每次 apply 重新计时。
 - **`selfcheck` 认版本行**：host.log 里不只有加载行，还有 channel-gap 之类的告警行（没有 `plugin`/`lib`）。以前直接取最后一行 → 一遇到告警就误报"host.log 里没有版本字段"。现在从后往前找**第一行带版本字段的**。
 - 测试 340 → 343（三条：只发 session 也能检索、两条通道只算一轮、resetStats 真的重置）。
+
+### v0.23.0 · 素材源：`book:` 泛化成 `asset:`（348 测试）
+
+上一版只支持"书"，但真实场景还有文档、截图、音视频、语音转写。这一版按"素材 = 载体"统一了：
+
+- **`lib/assets.js`**（`lib/books.js` 退化成别名，旧 import 全都能用）：
+  - `memory asset add <文件> --kind book|doc|transcript|image|audio|video --title 名字`
+  - 原文进**库外** `fish-memory-assets/<kind>/`；库内 `20_state/assets.json` 只存 id / kind / 标题 / 相对路径 / sha256 / 行数
+  - 旧清单 `20_state/books.json` 照样读（自动补 `kind: book`），不逼用户迁移
+- **两种校验**：文本类（book / doc / transcript）→ `quote` 在引用行 ±20 行内**逐字**校验；非文本类（image / audio / video）→ 不要求 `quote`，只验文件存在 + sha256 未变（"真实性由指纹保证，不由原话保证"）。
+- **`validatePoint`**：`asset:<kind>:<id>#L<n>` 与旧 `book:<id>#L<n>` 都认；清单里没有这个素材 = 硬错误；素材不在本机 = 提醒。
+- **`audit`**：`book_source` 改名 `asset_source`（仍是阻塞项，断链就红）。
+- **技能里加了「素材模式」**：登记 → 读 → 只写结论点；三条"不写"（不抄原文、不写过程流水、不把别人台词记成"他说过"）。
+- **契约 §11.5 新增 C7「全量素材进库」= 明确不做**，含实测代价（几十万 token / 翻档案会把原文捞出来）。
+- 测试 343 → 348。
 
 
 ---
