@@ -18,6 +18,7 @@
  *   self-pack [YYYY-MM]     生成自述素材包 → 40_pending/_self/<月>.md
  *   self-promote <YYYY-MM>  人审闸门：校验 40_pending/_self/<月>.draft.md → 15_self/<月>.md
  *   invalidate <id> [--at YYYY-MM-DD] [--reason]  标记事实失效（boundary/promise 不许）
+ *   soul drift|propose|apply <提案>   人格修订：自述变了才提提案，人审后应用（锁定小节必须逐字不变）
  *   stats [--days 7] [--price 4] [--turns 100] [--json]   真实账：注入均值/分层占比/门控/命中/每轮成本
  *   asset add <文件> [--kind book|doc|transcript|image|audio|video] [--title 名字]   素材放库外，库里只留引用`n *   book add <文件> [--title 书名]｜book list｜book verify   书源：原文在库外，库里只留引用
  *   wakeup [--out <目录>] [--json]  生成唤醒包（五件，目标 ≤4000 tok）→ 90_snapshot/wakeup-YYYYMMDD/
@@ -38,7 +39,7 @@ import { backtestSkill, promoteSkill } from '../lib/backtest.js'
 import { readCompatRecord } from '../lib/compat.js'
 import { applyErase, planErase, readErasureLog } from '../lib/erase.js'
 import { writeVault } from '../lib/vault.js'
-import { buildSelfPack, promoteSelf, selfDraftPath, SELF_MAX_CHARS } from '../lib/self.js'
+import { buildSelfPack, latestSelf, promoteSelf, selfDraftPath, SELF_MAX_CHARS } from '../lib/self.js'
 import { privacyReport, writeGitignoreBlock } from '../lib/privacy.js'
 import { abGold, GOLD_FLOOR, runGold, WEIGHT_SETS } from '../lib/goldset.js'
 import { checkHost } from '../lib/hostcheck.js'
@@ -71,6 +72,7 @@ import {
 } from '../lib/toolkit.js'
 import { addAsset, assetsRoot, listAssets, loadAssets, retireAsset, unretireAsset, verifyAsset, parseAssetSource } from '../lib/assets.js'
 import { assetUsage, computeStats, estimateCost } from '../lib/stats.js'
+import { SOUL_DRIFT_MAX, SOUL_DRIFT_MIN, applyRevision, changes7d, driftOf, mutableRegion, proposeRevision, readSoul } from '../lib/soul.js'
 
 const argv = process.argv.slice(2)
 const dirIdx = argv.indexOf('--dir')
@@ -584,6 +586,55 @@ function cmdVault() {
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
 }
 
+// ── soul（人格修订提案）────────────────────────────────────────
+/**
+ * 人格修订（v0.26.0）：修"叙事 → 人格"的桥。
+ *
+ *   memory soul-drift                 看自述与 soul 可变区差多少
+ *   memory soul-propose [--force]     生成提案到 40_pending/_soul/（**不改 soul**）
+ *   memory soul-apply <提案> [--force] 人审后应用：六道校验 → 旧版快照 → 写新 soul → changelog
+ */
+function cmdSoul(sub, arg) {
+  needDir()
+  const points = readPointFiles(dir, '30_points')
+  if (sub === 'drift') {
+    const soul = readSoul(dir)
+    if (!soul) fail('00_core/soul.md 不存在')
+    const self = latestSelf(dir)
+    if (!self) {
+      console.log('还没有自述（15_self/ 为空）。先写：memory self-draft → self-promote')
+      return
+    }
+    const d = driftOf(mutableRegion(soul), self)
+    console.log(`自述 vs soul 可变区：漂移 ${(d * 100).toFixed(1)}%`)
+    console.log(`  提案阈值 ${(SOUL_DRIFT_MIN * 100).toFixed(0)}% · 单次上限 ${(SOUL_DRIFT_MAX * 100).toFixed(0)}%`)
+    console.log(d >= SOUL_DRIFT_MIN ? '  → 够格提修订（memory soul-propose）' : '  → 还不够格，先继续过日子')
+    return
+  }
+  if (sub === 'propose') {
+    const r = proposeRevision(dir, points, { force: argv.includes('--force') })
+    if (!r.ok) fail(`不提案：${r.reason}（自述漂移 ${((r.sourceDrift || 0) * 100).toFixed(1)}%）`)
+    console.log(`✓ 提案已生成：${r.path}`)
+    console.log(`  自述漂移 ${(r.sourceDrift * 100).toFixed(1)}% · 本次改动 ${(r.editDrift * 100).toFixed(1)}%（上限 ${(SOUL_DRIFT_MAX * 100).toFixed(0)}%）`)
+    console.log('  它**没有**改 soul.md；用 memory soul-apply 应用')
+    console.log('  建议先打开看一眼：填一句"她哪里不一样了"，再 apply。')
+    return
+  }
+  if (sub === 'apply') {
+    if (!arg) fail('用法：memory soul-apply <40_pending/_soul/rev-*.md> [--force]')
+    const r = applyRevision(dir, arg, points, { force: argv.includes('--force') })
+    if (!r.ok) {
+      console.error('✗ 没通过，soul.md 一个字节都没动：')
+      for (const e of r.errors) console.error(`    ${e.field}: ${e.message}`)
+      process.exit(1)
+    }
+    console.log(`✓ 已应用：soul.md → v${r.version}（旧版 ${r.snapshot}，改动 ${(r.drift * 100).toFixed(1)}%）`)
+    console.log(`  changelog 已记一行；7 天内已用 ${changes7d(dir)}/2`)
+    return
+  }
+  fail('用法：memory soul <drift|propose|apply> ...')
+}
+
 // ── stats ─────────────────────────────────────────────────────
 /**
  * 用真实日志算账（v0.24.0）：注入均值/中位/峰值 + 分层占比 + 门控与命中率 + 每轮成本。
@@ -1077,6 +1128,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'soul':
+    cmdSoul(params[0], params[1])
     break
   case 'stats':
     cmdStats()
