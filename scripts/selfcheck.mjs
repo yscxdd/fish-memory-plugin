@@ -157,11 +157,20 @@ if (!existsSync(dir)) {
     const hostLog = join(dir, '50_log', 'host.log')
     let rec = null
     if (existsSync(hostLog)) {
-      const last = readFileSync(hostLog, 'utf8').trim().split('\n').filter(Boolean).pop()
-      try {
-        rec = JSON.parse(last) ?? null
-      } catch {
-        rec = null
+      // v0.22.1：host.log 里不只有"加载"行，还有 channel-gap 之类的告警行（没有版本字段）。
+      // 以前直接取最后一行 → 一旦最后一行是 channel-gap，就会误报"host.log 里没有版本字段"。
+      // 现在从后往前找**第一行带 plugin 或 lib 的**。
+      const lines = readFileSync(hostLog, 'utf8').trim().split(/\r?\n/).filter(Boolean)
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const o = JSON.parse(lines[i])
+          if (o && (o.lib || o.plugin)) {
+            rec = o
+            break
+          }
+        } catch {
+          /* 坏行跳过，继续往前找 */
+        }
       }
     }
     const liveLib = rec?.lib ?? null
