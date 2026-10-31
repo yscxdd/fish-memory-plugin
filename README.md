@@ -1,7 +1,7 @@
-# fish-memory-plugin v0.15.1
+# fish-memory-plugin v0.20.1
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-243%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-302%20passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependencies-0-blueviolet)
 
 **Local-first long-term memory for AI companions** · 给 AI 伴侣的本地长期记忆插件。
@@ -31,7 +31,7 @@ node scripts/memory.mjs init /tmp/my-memories      # 建一个记忆库（Window
 node scripts/memory.mjs check  --dir /tmp/my-memories
 node scripts/memory.mjs audit  --dir /tmp/my-memories
 node scripts/memory.mjs gold                       # 金标自测：20/20
-npm test                                           # 243 个单测
+npm test                                           # 302 个单测
 ```
 
 你应该看到：
@@ -41,7 +41,7 @@ npm test                                           # 243 个单测
 校验：0 条，0 条有硬错误
 审计通过
 金标：20/20（100%，下限 80%）  阈值 0.8  最小边际 0.68  负例误命中 0
-ℹ tests 243 / pass 243 / fail 0
+ℹ tests 302 / pass 302 / fail 0
 ```
 
 然后打开 `/tmp/my-memories` 看看——**那就是全部**：`00_core/`（灵魂与规则）、`10_archive/`（逐字对话）、`30_points/`（记忆点）、`50_log/`（日志）。没有数据库、没有隐藏状态。
@@ -85,7 +85,7 @@ markdown for the soul/rules/memories, append-only JSONL for the raw transcript.
 - **The archive is append-only** with a `prev/hash` chain; startup verifies it and reports any file that changed.
 - **Injection is budgeted**: 700 tok core / 300 tok body / 2400 tok abilities, degrading `full → summary → index line` instead of truncating blindly.
 - **Everything that reaches the model is sanitized** (fake `<!--` markers split, likely secrets redacted).
-- **243 tests**, a 20-query gold set, a static host-surface check, and a self-audit that encodes the project's own security rules — all run on every PR. The 12-gate `selfcheck` needs a real memory library, so it runs locally (and **fails** on a version or runtime mismatch, instead of reporting green).
+- **302 tests**, a 20-query gold set, a static host-surface check, and a self-audit that encodes the project's own security rules — all run on every PR. The 12-gate `selfcheck` needs a real memory library, so it runs locally (and **fails** on a version or runtime mismatch, instead of reporting green).
 
 It plugs into [DeepSeek Harness](https://github.com/) (DSH) as a bundle; the CLI (`scripts/memory.mjs`)
 works standalone on any folder. License: MIT.
@@ -315,7 +315,7 @@ fish-memory: 注入 N 条 / 约 XXX tok
 |---|---|---|
 | **档案链跨会话误报** | `seq` 是**会话级**的，档案是**按天**一个文件；两个会话同一天交错写，文件里就会出现 `4172 → 9`。`verifyChain` 原来按文件级比较，于是每开一个新会话，下次启动必报「档案链自检失败：seq 不递增」 | seq 单调改成会话内比较；`prev`/`hash` 链仍是文件级，不变量没放宽 |
 | **压力保护从未生效** | 宿主 `TokenMeasurement` 只有 `totalTokens` 等字段，**没有上限**；`pressureRatio` 在测量结果里找 `contextWindow`，恒为 undefined → 到 70% 抢包 + 提醒整条死路 | 上限由外部给：`session.requestContext().contextWindow` → `pressure.contextWindow` → `FISH_MEMORY_CONTEXT_WINDOW` |
-| **`inject.core` 是空配置** | 核心层整块 `push`，从不看预算；`rules.md` 一长就吃上下文 | 核心层按块装：超预算先丢低优先级（`status < relation < user < rules < soul`），单块仍超才截断并留「已截断」标记 |
+| **`inject.core` 是空配置** | 核心层整块 `push`，从不看预算；`rules.md` 一长就吃上下文 | 核心层按块装：超预算先丢低优先级（`relation < user < rules < soul`），单块仍超才截断并留「已截断」标记。（v0.16.0 起状态块另计，不再参与这张表） |
 | **目录只解析一次** | 插件是 host 级单例，第二个工作区的会话仍读写第一套库 | cwd 变了就重建 store/archive 并重新注册技能；拿不到 cwd 时不切走已确定的库 |
 
 顺手修掉的：`scripts/serve.mjs` 少 import `scanAbilities`（`/context?mode=task` 必崩 500）、
@@ -345,6 +345,8 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\desktop\node_modules
 | `FISH_MEMORY_DIR` | — | 环境变量，优先于默认值 |
 | `backupKeep` | `7` | 保留最近几份每日备份（v0.8.0；<1 视为不清理） |
 | `inject.core/index/body/work` | 700 / 700 / 300 / 350 | token 预算；`core` 配 0 表示不限 |
+| `inject.status` | `60` | 【我们现在】的**独立**预算（总设计 §5.4）；不占 `core`，配 0 = 不限（v0.16.0） |
+| （合计硬上限） | `1,700` | 核心+索引+正文，契约 §11 #6；**正好顶格、没有余量**——任何一层再涨就会让 `test/budget.test.js` 变红 |
 | `retrieval.threshold` | `0.8` | 低于此分不算命中 |
 | `retrieval.recallLimit` | `20` | 进入排序的候选数 |
 | `retrieval.maxEvents` | `3` | 单次注入的事件数上限 |
@@ -353,6 +355,8 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\profiles\desktop\node_modules
 | `retrieval.idf` | `false` | 二字组 IDF 加权；**量过本库金标零增益**，默认关（v0.5.12） |
 | `retrieval.idfMode` | `min` | IDF 分母：`min`（保持 §14 那条）或 `query`（经典 BM25 方向） |
 | `pressure.contextWindow` | — | 上下文窗口兜底值（宿主拿不到时用） |
+| `pressure.prepareAt` | `0.7` | 到多少比例开始"准备"：落当前段原文包 + 下一轮提醒去压（v0.20.0） |
+| `pressure.switchAt` | `0.8` | 到多少比例喊"该换窗了"：写 `20_state/handoff.json` + 注入里明说"这一轮结束后开新会话"（v0.20.0） |
 | `FISH_MEMORY_CONTEXT_WINDOW` | — | 同上，环境变量版 |
 
 **权重的值从哪来、谁保证它非空**：`retrieval.weights`（可能只有一部分键）→
@@ -391,6 +395,7 @@ $node = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\nod
 | `audit [--json]` | 契约 §10：traceable / rebuild / provenance / event_cluster / canary / soul_guard / salience_dual / orphans / fixtures / invalid | 1 = 未通过 |
 | `digest [--write]` | 按 30 分钟切段 + >24h 空窗；`--write` 在 `40_pending/_segments/` 生成「原文 + 压缩提示」的包 | — |
 | `reset --fix [--yes]` | 清空所有 `fixture: true` 的记忆点和 `_segments/` 原文包，重建索引；**不动档案**。不加 `--yes` 只列清单 | — |
+| `reset --all [--yes]` | **开养前清零**（v0.19.0）：档案 / 状态 / 日志 / 快照 / 技能 / 草稿一次清空，`00_core` 与文档不动，索引重建为空；`50_log/reset.log` 只留数量流水。这是**唯一一次**"档案可删"的窗口 | — |
 | `forget [--yes]` | 按 `R=(1+19/81·t/S)^-0.5` 算可提取度：active→demoted（R<0.6 且 salience≤3 且 ≥90 天）、demoted→dormant（R<0.5 且 salience≤2 且 ≥180 天且未复述）；墓碑写 `50_log/eviction.log`（含 R/S/天数）。**pinned/boundary/promise 永不动** | — |
 | `pack <目录>` | 只打不可再生层（核心/档案/状态/点/能力/草稿/日志），排除索引与样例；每个文件带 sha256 写进 `MANIFEST.json` | — |
 | `unpack <包> <目录>` | 先验全部哈希（一个不对就不拷），再落到新目录 + 重建索引 | — |
@@ -401,6 +406,8 @@ $node = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\nod
 | `erase <id...>` | 真删除：改档案 + 重算链 + 同步改写备份 + 墓碑。默认预览，`--yes` 执行，`--cascade` 连点删 | 1 = 被引用且没给 `--cascade`、或找不到 id |
 | `erased` | 看删除墓碑（只有 id/时间/原因，不含原文） | — |
 | `vault [--days N]` | 生成 Obsidian/LogSeq 视图（日笔记 + 入口 + 关系页，只写 `20_index/`） | — |
+| `wakeup [--out N] [--sample-voice]` | 生成**唤醒包**（`00_soul` / `01_clusters` / `02_voice` / `03_protocol` + manifest，目标 ≤4000 tok）到 `90_snapshot/`。**只读**；voice 默认只认 `00_core/voice.md`，`--sample-voice` 才从档案抽（并筛掉工作汇报） | — |
+| `tokens [--days N]` | 每轮注入 token 的账（`50_log/token.log`）：均值/中位/峰值/分块占比/按天。**看趋势用，不看单轮**（v0.18.0） | — |
 
 `digest` 是压缩管线的入口：它不代替模型写记忆点，只把一段对话和格式要求打包好；
 写好的草稿用 `promote` 过校验才能进正式库。

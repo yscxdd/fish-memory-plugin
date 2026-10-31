@@ -916,11 +916,21 @@ test('apply：收消息 → 记档；注入包含核心层', async () => {
   ctx.dispose()
 })
 
+// 自述提醒依赖"本月有素材"。fixture 里的日期是写死的，**跨月就会假失败**
+// （2026-11-01 实测踩到：points 是 10-28，today 已进 11 月 → 一条都不算本月素材）。
+// 所以测试要自己把它改到本月，而不是让测试依赖跑的那一天。
+const thisMonth = () => localDay(new Date()).slice(0, 7)
+const retagToThisMonth = (dir, id) => {
+  const p = join(dir, '30_points', `${id}.md`)
+  writeFileSync(p, readFileSync(p, 'utf8').replace(/^date:.*$/m, `date: ${thisMonth()}-01`), 'utf8')
+}
+
 test('自述提醒（端到端）：有素材才提、指向闸门、一天只提一次', () => {
   const userMsg = (id, text) => ({ id, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } })
 
   // ① 本月有 boundary（M-003 是 salience 5 / boundary）→ 回合结束该提醒，且文案指向闸门
   const dir = makeMemory()
+  retagToThisMonth(dir, 'M-003')
   const ctx = fakeCtx()
   apply(ctx, { memoryDir: dir })
   const agent = { id: 'self-e2e', session: { header: { cwd: dir } } }
@@ -951,4 +961,51 @@ test('自述提醒（端到端）：有素材才提、指向闸门、一天只�
   const third = ctx2.render('self-e2e-2', { cwd: dir2 })
   assert.doesNotMatch(third, /<!-- 自述提醒 -->/, '只有日常事，不该催她写自述')
   ctx2.dispose()
+})
+
+// ── 上下文压力：两个阈值（v0.20.0）────────────────────────────
+
+const withTokenMeter = (ctx, total, window = 1000) => {
+  ctx.get = (n) => (n === 'tokenMeter' ? { measure: () => ({ totalTokens: total }) } : undefined)
+  return { id: null, session: { header: {}, requestContext: () => ({ contextWindow: window }) } }
+}
+
+const userMsgOf = (id, text) => ({ id, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } })
+
+test('压力到 80%：注入里明说"该开新会话"，并先把交接包写出来（不谎称）', () => {
+  const dir = makeMemory()
+  const ctx = fakeCtx()
+  apply(ctx, { memoryDir: dir })
+  const agent = withTokenMeter(ctx, 850)
+  agent.id = 'p-85'
+  agent.session.header.cwd = dir
+
+  ctx.emit('agent/inbox/inserted', { agent, message: userMsgOf('m-1', '在吗') })
+  ctx.emit('agent/turn-stopping', { agent })
+
+  assert.ok(existsSync(join(dir, '20_state/handoff.json')), '到换窗线要先把「接着聊」包写出来')
+  const text = ctx.render('p-85', { cwd: dir })
+  assert.match(text, /开一个新会话/)
+  assert.match(text, /handoff\.json/, '包写了就敢说"包已经写好"')
+  assert.match(text, /85%/)
+  ctx.dispose()
+})
+
+test('压力 72%：只提醒去压，不喊换窗（阈值分开的意义）', () => {
+  const dir = makeMemory()
+  const ctx = fakeCtx()
+  apply(ctx, { memoryDir: dir })
+  const agent = withTokenMeter(ctx, 720)
+  agent.id = 'p-72'
+  agent.session.header.cwd = dir
+
+  ctx.emit('agent/inbox/inserted', { agent, message: userMsgOf('m-1', '在吗') })
+  ctx.emit('agent/turn-stopping', { agent })
+
+  assert.equal(existsSync(join(dir, '20_state/handoff.json')), false, '还没到换窗线，不该写交接包')
+  const text = ctx.render('p-72', { cwd: dir })
+  assert.match(text, /72%/)
+  assert.match(text, /先压/)
+  assert.doesNotMatch(text, /开一个新会话/)
+  ctx.dispose()
 })

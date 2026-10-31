@@ -107,3 +107,19 @@ test('unpack：包被改过就拒绝，目标非空也拒绝', () => {
   writeFileSync(join(nonEmpty, 'x.txt'), 'x')
   assert.throws(() => unpackMemory(pkg2, nonEmpty), /目标目录非空/)
 })
+
+// ── v0.20.1：唤魔包不进备份（内容可从 00_core 与档案重出）─────────
+
+test('pack 排除 90_snapshot（唤醒包不重复进备份）', () => {
+  const src = mkdtempSync(join(tmpdir(), 'fishmem-pack-snap-'))
+  mkdirSync(join(src, '00_core'), { recursive: true })
+  writeFileSync(join(src, '00_core/soul.md'), '# SOUL\n', 'utf8')
+  mkdirSync(join(src, '90_snapshot/wakeup-20261031'), { recursive: true })
+  writeFileSync(join(src, '90_snapshot/wakeup-20261031/00_soul.md'), '# 唤醒包\n', 'utf8')
+  const dest = mkdtempSync(join(tmpdir(), 'fishmem-pack-out-'))
+  packMemory(src, dest, { force: true })
+  const man = JSON.parse(readFileSync(join(dest, 'MANIFEST.json'), 'utf8'))
+  const paths = man.files.map((f) => f.path)
+  assert.ok(paths.includes('00_core/soul.md'), '00_core 要在包里')
+  assert.ok(!paths.some((p) => p.startsWith('90_snapshot/')), `90_snapshot 不该进包：${paths.join(', ')}`)
+})

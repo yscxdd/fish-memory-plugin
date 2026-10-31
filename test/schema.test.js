@@ -24,6 +24,7 @@ import {
   validatePoint,
 } from '../lib/toolkit.js'
 import { ArchiveWriter, verifyChain } from '../lib/archive.js'
+import { parseFrontMatter } from '../lib/util.js'
 
 const tmp = (p) => mkdtempSync(join(tmpdir(), p))
 
@@ -176,4 +177,20 @@ test('V5：没有任何外部改动时，不报竞态、链保持有效', async 
   const file = join(dir, '10_archive', 'messages', readdirSync(join(dir, '10_archive', 'messages'))[0])
   const rows = readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l))
   assert.equal(verifyChain(rows).ok, true, JSON.stringify(verifyChain(rows)))
+})
+
+// ── v0.20.1：front matter 的键不许是 __proto__ ─────────────────
+
+test('front matter 里写 __proto__ / constructor 不会污染对象原型', () => {
+  const text = ['---', 'id: M-1', '__proto__: {polluted: true}', 'constructor: {bad: true}', 'title: 正常字段', '---', '', '正文'].join('\n')
+  const { meta } = parseFrontMatter(text)
+  assert.equal(meta.title, '正常字段', '正常字段照常解析')
+  assert.equal({}.polluted, undefined, '全局 Object.prototype 不能被污染')
+  assert.equal(Object.getPrototypeOf(meta), Object.prototype, 'meta 的原型必须还是 Object.prototype')
+
+  // 嵌套块里的危险键同样要挡
+  const nested = ['---', 'id: M-2', 'emotion:', '  __proto__: {x: 1}', '  user: {valence: 0.5}', '---', ''].join('\n')
+  const r2 = parseFrontMatter(nested).meta
+  assert.equal(Object.getPrototypeOf(r2.emotion), Object.prototype, '嵌套对象原型也不能被改')
+  assert.equal(r2.emotion.user.valence, 0.5)
 })

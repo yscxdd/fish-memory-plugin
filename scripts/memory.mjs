@@ -18,8 +18,11 @@
  *   self-pack [YYYY-MM]     生成自述素材包 → 40_pending/_self/<月>.md
  *   self-promote <YYYY-MM>  人审闸门：校验 40_pending/_self/<月>.draft.md → 15_self/<月>.md
  *   invalidate <id> [--at YYYY-MM-DD] [--reason]  标记事实失效（boundary/promise 不许）
+ *   wakeup [--out <目录>] [--json]  生成唤醒包（五件，目标 ≤4000 tok）→ 90_snapshot/wakeup-YYYYMMDD/
+ *   tokens [--days N] [--json]      每轮注入 token 的账（50_log/token.log）
+ *   reset --all [--yes]  开养前清零：档案/状态/日志/快照/技能/草稿（00_core 与文档不动）
  *
- * flags：--dir <path>  --json  --check  --write  --force
+ * flags：--dir <path>  --json  --check  --write  --force  --out <dir>
  */
 
 import { appendFileSync, existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
@@ -40,8 +43,12 @@ import { checkHost } from '../lib/hostcheck.js'
 import { HOST_POINTS } from '../lib/host.js'
 import { packMemory, unpackMemory } from '../lib/pack.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
+import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
 import { verifyPackage } from '../lib/verify.js'
+import { writeWakeup } from '../lib/wakeup.js'
+import { summarizeTokenLog } from '../lib/toklog.js'
+import { applyResetAll, planResetAll } from '../lib/reset.js'
 import {
   audit,
   buildIndex,
@@ -231,9 +238,47 @@ function cmdAudit() {
 }
 
 // ── reset ──────────────────────────────────────────────────────
+/** 开养前清零：档案/状态/日志/快照/技能/草稿全清，00_core 与文档不动（v0.19.0） */
+function cmdResetAll() {
+  const plan = planResetAll(dir)
+  const total = Object.values(plan.counts).reduce((n, x) => n + x, 0)
+  if (!total && !plan.index_stale) {
+    console.log('已经是干净的了：没有档案、状态、日志、快照、技能或旧投影需要清。')
+    return
+  }
+  if (!flags.has('--yes')) {
+    console.log(`将清空 ${total} 个文件 / 目录（约 ${(plan.bytes / 1024).toFixed(0)} KB）：`)
+    for (const [area, n] of Object.entries(plan.counts)) console.log(`  ${area.padEnd(10)} ${String(n).padStart(4)}`)
+    if (plan.index_stale) console.log(`  ${'20_index'.padEnd(10)}    重建为空（旧 vault 视图/入口页里有对话原文）`)
+    console.log(`\n其中档案消息 ${plan.archive_messages} 条（对话原文，删了不可恢复）。`)
+    console.log('不动：' + plan.kept.join(' · '))
+    console.log('\n确认执行：加 --yes')
+    return
+  }
+  const r = withLock(dir, () => applyResetAll(dir))
+  for (const [area, n] of Object.entries(r.removed)) console.log(`  ${area.padEnd(10)} ${String(n).padStart(4)}`)
+  console.log(`✓ 已清零 ${r.archive_messages} 条档案消息、${Object.values(r.removed).reduce((a, b) => a + b, 0)} 个文件/目录`)
+  console.log('  ✓ 00_core、文档与模板未动；20_index 已重建为空')
+  console.log('  ✓ 流水写在 50_log/reset.log（只追加，只有数量与时间，不含原话）')
+  // 删不掉的东西要当场说：日志说"清了 N 个"而实际还剩东西，就是自述为真、事实为假
+  if (r.residual && r.residual.total > 0) {
+    console.error(`! 还剩 ${r.residual.total} 个文件/目录没删掉（被占用或权限不足）：`)
+    for (const [area, n] of Object.entries(r.residual.counts)) console.error(`    ${area.padEnd(10)} ${String(n).padStart(4)}`)
+    console.error('  关掉占用它的程序后重跑一次；不要以为已经干净了。')
+    process.exitCode = 1
+  } else if (r.residual && r.residual.total === -1) {
+    console.error('! 删完复查失败（读不了库），无法确认是否清零')
+    process.exitCode = 1
+  }
+}
+
 function cmdReset() {
   needDir()
-  if (!flags.has('--fix')) fail('用法：memory reset --fix [--yes]（只清 fixture，不动档案）')
+  if (flags.has('--all')) {
+    cmdResetAll()
+    return
+  }
+  if (!flags.has('--fix')) fail('用法：memory reset --fix [--yes]（只清 fixture）｜memory reset --all [--yes]（开养前清零）')
   const list = listFixtures(dir)
   if (!list.length) {
     console.log('没有 fixture 素材，无需清理')
@@ -355,6 +400,20 @@ function cmdStatus() {
   console.log(`压缩段：已出包 ${s.segments.written} / 已压 ${s.segments.done}`)
   console.log(`备份：${s.backups.count} 份${s.backups.latest ? `（最近 ${s.backups.latest}）` : '（还没有）'}`)
   console.log(`日志：检索 ${s.logs.retrieval} · 金丝雀 ${s.logs.canary} · 注入隔离 ${s.logs.guard}`)
+  // 注入预算：契约 §11 #6 的上限与当前配置摆在一起。
+  // 2026-10-31 拍板后（总设计 §5.4 方案 A，core 700）总额正好顶格，
+  // 所以这条线路由"报差额"变成"报余量"——余量是 0 也是一种要说出来的事实。
+  const total = injectBudgetTotal(DEFAULT_BUDGET)
+  const gap = total == null ? 0 : total - INJECT_HARD_CAP
+  console.log(
+    `注入预算：core ${DEFAULT_BUDGET.core} + 索引 ${DEFAULT_BUDGET.index} + 正文 ${DEFAULT_BUDGET.body} = ${total ?? '不限'}` +
+      (gap > 0
+        ? `（破约：契约 §11 上限 ${INJECT_HARD_CAP}，超 ${gap}）`
+        : gap === 0
+          ? `（= 契约 §11 上限 ${INJECT_HARD_CAP}，顶格）`
+          : `（≤ 契约上限 ${INJECT_HARD_CAP}，余 ${-gap}）`) +
+      `；关系状态另计 ${DEFAULT_BUDGET.status}`,
+  )
   // 隐私一行：只说结论，详情用 memory privacy
   try {
     const p = privacyReport(dir)
@@ -493,6 +552,85 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── wakeup ────────────────────────────────────────────────────
+/** 唤醒包（总设计 §11.1）：五件，目标 ≤4,000 tok。只读，不碰档案与记忆点 */
+function cmdWakeup() {
+  needDir()
+  const out = flagValue('--out')
+  // 默认只认 00_core/voice.md；抽档案必须显式开（工作汇报不是她的语气）
+  let r
+  try {
+    r = writeWakeup(dir, { out, sampleVoice: flags.has('--sample-voice') })
+  } catch (e) {
+    // 落点不合法（写进真相层）当场停，而不是写完才发现 memory check 红了
+    fail(String(e?.message || e))
+  }
+  if (r.external) {
+    console.error(`! 写到库外了：${r.outDir}`)
+    console.error('  里面是她的灵魂全文与对话原句，走网盘/发人之前想清楚。')
+  }
+  if (flags.has('--json')) {
+    console.log(JSON.stringify(r, null, 2))
+    return
+  }
+  const s = r.stats
+  console.log(`✓ 唤醒包：${r.outDir}`)
+  for (const f of r.files) {
+    const f2 = s.perFile[f]
+    console.log(`  ${f.padEnd(16)} ${String(f2.tokens).padStart(5)} tok  sha256 ${f2.sha256.slice(0, 12)}`)
+  }
+  console.log(
+    `合计 ${s.tokens} tok / 目标 ≤ ${s.target}` +
+      (s.over ? `（**超出 ${-s.headroom}**，回 S7 前要砍）` : `（余 ${s.headroom}）`),
+  )
+  console.log(
+    `素材：记忆点 ${s.points} 条 · 档案 ${s.days} 天 · voice ` +
+      (s.voice.source === 'voice.md'
+        ? '取自 00_core/voice.md'
+        : s.voice.source === 'archive'
+          ? `档案里抽 ${s.voice.segments ?? 0} 段（未经人审）`
+          : '**缺**：`00_core/voice.md` 的「## 现在」还是空的'),
+  )
+  if (s.voice.reason === 'archive-looks-like-work') {
+    console.log('  ⚠ 档案里她的话全像工作汇报（代码/命令/长解释），一段都没抽——这一格得人工挑。')
+  }
+  if (r.overwrote) console.log('（这个目录里已有 manifest.json，已覆盖）')
+  console.log('只读生成：10_archive / 30_points 一个字节都没动。')
+}
+
+// ── tokens ────────────────────────────────────────────────────
+/** 每轮注入 token 的账（本地模型 §10.2）。看趋势用，不看单轮 */
+function cmdTokens() {
+  needDir()
+  const raw = flagValue('--days')
+  const days = raw === undefined ? 7 : Number(raw)
+  if (!Number.isFinite(days) || days < 1) fail('--days 要是正整数')
+  const s = summarizeTokenLog(dir, { days })
+  if (flags.has('--json')) {
+    console.log(JSON.stringify(s, null, 2))
+    return
+  }
+  if (!s.turns) {
+    console.log(`最近 ${days} 天没有 token 记账（50_log/token.log 是空的）。`)
+    console.log('正常：只有插件真的装配过一次注入才会写。开养后每轮一行。')
+    return
+  }
+  console.log(`最近 ${days} 天 · ${s.turns} 轮（检索 ${s.turns - s.gated} / 门控跳过 ${s.gated}）`)
+  console.log(`注入 token：均值 ${s.avg} · 中位 ${s.p50} · 峰值 ${s.max} · 合计 ${s.total_tokens}`)
+  const rows = Object.entries(s.blocks)
+    .filter(([, v]) => v.avg > 0)
+    .sort((a, b) => b[1].avg - a[1].avg)
+  for (const [k, v] of rows) {
+    console.log(`  ${k.padEnd(8)} 均值 ${String(v.avg).padStart(6)} tok · 峰值 ${String(v.max).padStart(5)} · 占 ${v.share}%`)
+  }
+  if (s.bad_lines) console.log(`  （${s.bad_lines} 行坏 JSON 已跳过）`)
+  if (s.by_day.length) {
+    console.log('按天：')
+    for (const d of s.by_day) console.log(`  ${d.day}  ${String(d.turns).padStart(3)} 轮 · 均值 ${d.avg} tok`)
+  }
+  console.log('设计里另外三列（history / out / local_*）是宿主与小模型的账，插件测不到，没编。')
 }
 
 // ── self-pack ──────────────────────────────────────────────────
@@ -807,6 +945,12 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'wakeup':
+    cmdWakeup()
+    break
+  case 'tokens':
+    cmdTokens()
     break
   case 'self-pack':
     cmdSelfPack(params[0])

@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { contextWindowOf, ensureSegmentPacket, latestOpenSegment, pressureNote, pressureRatio } from '../lib/pressure.js'
+import { normalizeConfig } from '../lib/config.js'
 
 test('pressureRatio：认得出常见字段，认不出就返回 null（不误报）', () => {
   assert.equal(pressureRatio({ totalTokens: 700, contextWindow: 1000 }), 0.7)
@@ -76,4 +77,30 @@ test('ensureSegmentPacket：到限时把当前段原文包落地，已存在不�
   assert.equal(second.wrote, false)
 
   assert.match(pressureNote(0.72), /72%/)
+})
+
+test('两个阈值：0.72 只提醒压，0.85 才喊换窗（且不谎称包已备好）', () => {
+  const a = pressureNote(0.72)
+  assert.match(a, /先压/)
+  assert.doesNotMatch(a, /开一个新会话/, '没过换窗线就别催人换窗')
+
+  const b = pressureNote(0.85, { switchAt: 0.8 })
+  assert.match(b, /开一个新会话/)
+  assert.doesNotMatch(b, /handoff\.json/, '没写包就不许说"包已经写好"')
+
+  const c = pressureNote(0.85, { switchAt: 0.8, handoff: true })
+  assert.match(c, /包已经写好/)
+  assert.match(c, /handoff\.json/)
+})
+
+test('阈值可配：pressure.prepareAt / switchAt 走配置校验（越界 clamp 并告警）', () => {
+  const warns = []
+  const cfg = normalizeConfig({ pressure: { prepareAt: 0.6, switchAt: 0.9 } }, { warn: (m) => warns.push(m) })
+  assert.equal(cfg.pressure.prepareAt, 0.6)
+  assert.equal(cfg.pressure.switchAt, 0.9)
+  assert.deepEqual(warns, [])
+
+  const bad = normalizeConfig({ pressure: { switchAt: 3 } }, { warn: (m) => warns.push(m) })
+  assert.equal(bad.pressure.switchAt, 0.99, '越界按上限算')
+  assert.ok(warns.some((w) => /switchAt/.test(w)), JSON.stringify(warns))
 })
