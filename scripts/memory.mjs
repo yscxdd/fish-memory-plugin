@@ -31,7 +31,7 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { atomicWriteText, localDay } from '../lib/util.js'
 import { join, resolve } from 'node:path'
-import { applyForget, planForget } from '../lib/forget.js'
+import { applyForget, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
 import { latestRun, startRun } from '../lib/identity.js'
 import { forgottenLog, searchMemory, statusOf } from '../lib/inspect.js'
 import { withLock } from '../lib/lock.js'
@@ -585,6 +585,38 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── dormant（遗忘层）────────────────────────────────────────────
+/**
+ * v0.29：遗忘层是独立目录 31_dormant/。
+ *   memory dormant list            看层里有什么（张力之外的第二层）
+ *   memory dormant revive <id>     手动复活（相当于"你又提起了它"）
+ *   memory forget --migrate        把旧 status=dormant 的点迁进层（一次性）
+ */
+function cmdDormant(sub, arg) {
+  needDir()
+  if (sub === 'list') {
+    const layer = readPointFiles(dir, '31_dormant')
+    if (!layer.length) {
+      console.log('遗忘层是空的。')
+      return
+    }
+    for (const p of layer) {
+      const at = (/^dormant_at:\s*(.+)$/m.exec(p.raw) || [])[1] || ''
+      console.log(`- ${p.id}  ${String(at).slice(0, 10)}  ${p.title}`)
+    }
+    console.log(`\n共 ${layer.length} 条 · 复活：memory dormant revive <id>`)
+    return
+  }
+  if (sub === 'revive') {
+    if (!arg) fail('用法：memory dormant revive <id>')
+    const r = revivePoint(dir, arg)
+    if (!r.ok) fail(r.reason)
+    console.log(`✓ ${arg} 已复活（第 ${r.revivals} 次）· S=${r.S}${r.permanent ? ' · 已转 pin: soft，不会再进遗忘层' : ''}`)
+    return
+  }
+  fail('用法：memory dormant <list|revive> ...')
 }
 
 // ── question（缺口/放不下的事）──────────────────────────────────
@@ -1185,6 +1217,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'dormant':
+    cmdDormant(params[0], params[1])
     break
   case 'question':
     cmdQuestion(params[0], params[1])

@@ -57,7 +57,7 @@ test('R(t,S)：t=0 为 1，随时间单调下降', () => {
   assert.equal(initialStability(5), 16)
 })
 
-test('plan：active 90 天 → demote；demoted 200 天 → dormant；pinned 不动', () => {
+test('plan：第一轮进层（30 天 + R<0.72）；未来还近的不动；pinned 不动', () => {
   const dir = fixture()
   writeFileSync(join(dir, '30_points/A.md'), point('M-2026-07-01-001', { salience: 2, date: daysAgo(120) }))
   writeFileSync(
@@ -72,31 +72,35 @@ test('plan：active 90 天 → demote；demoted 200 天 → dormant；pinned 不
 
   const { plan } = planForget(dir, { now: NOW })
   const by = Object.fromEntries(plan.map((x) => [x.id, x]))
-  assert.equal(by['M-2026-07-01-001'].action, 'demote')
-  assert.equal(by['M-2026-03-01-002'].action, 'dormant')
+  assert.equal(by['M-2026-07-01-001'].action, 'dormant', '120 天 + salience2 应当直接进遗忘层')
+  assert.equal(by['M-2026-03-01-002'].action, 'dormant', '已降级且很老 → 进层')
   assert.equal(by['M-2026-10-20-004'].action, 'keep')
   assert.equal(by['M-2026-07-01-003'], undefined, 'pinned/boundary 不参与计划')
 })
 
-test('apply：改 status、写墓碑含数值、索引重建、S 落 state', () => {
+test('apply：真的移进 31_dormant、写墓碑含数值、索引重建、S 落 state', () => {
   const dir = fixture()
   writeFileSync(join(dir, '30_points/A.md'), point('M-2026-07-01-001', { salience: 2, date: daysAgo(120) }))
   const { changed } = applyForget(dir, { now: NOW })
   assert.equal(changed, 1)
 
-  const p = readPointFiles(dir, '30_points')[0]
-  assert.equal(p.status, 'demoted')
+  const live = readPointFiles(dir, '30_points')
+  assert.equal(live.length, 0, '主层不该还留着它')
+  const inLayer = readPointFiles(dir, '31_dormant')
+  assert.equal(inLayer.length, 1, '应当真的移进遗忘层')
+  assert.equal(inLayer[0].status, 'dormant')
+  assert.match(inLayer[0].raw, /^dormant_at:/m)
 
   const tomb = readFileSync(join(dir, '50_log/eviction.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
   assert.equal(tomb.length, 1)
   assert.equal(tomb[0].point, 'M-2026-07-01-001')
-  assert.equal(tomb[0].action, 'demote')
+  assert.equal(tomb[0].action, 'dormant')
   assert.equal(typeof tomb[0].R, 'number')
   assert.equal(typeof tomb[0].S, 'number')
 
   const state = JSON.parse(readFileSync(join(dir, '20_state/state.json'), 'utf8'))
   assert.equal(state['M-2026-07-01-001'].S, 7)
-  assert.equal(state['M-2026-07-01-001'].st, 'demoted')
+  assert.equal(state['M-2026-07-01-001'].st, 'dormant')
 
   assert.equal(existsSync(join(dir, '20_index/all.idx.jsonl')), true)
 })
