@@ -19,6 +19,7 @@ import { join } from 'node:path'
 
 import {
   LINE_MIN_TENSION,
+  isFaded,
   MAX_OPEN,
   QUESTIONS_FILE,
   TOUCH_FLOOR,
@@ -58,14 +59,29 @@ test('记一条：id 按天递增，初始张力 0', () => {
   assert.equal(loadQuestions(dir).items.length, 2)
 })
 
-test('张力按小时投影：不写回、随时间涨、封顶 100', () => {
+test('张力曲线：先涨到顶，7 天后开始褪（释怀），但不归零', () => {
   const dir = fixture()
   const { item } = addQuestion(dir, { text: 'x' }, at(10))
   assert.ok(Math.abs(tensionOf(item, NOW) - 15) < 0.1, `10 小时应约 15，实际 ${tensionOf(item, NOW)}`)
   assert.equal(item.tension, 0, '投影不写回落盘值')
 
-  const old = addQuestion(dir, { text: 'y' }, at(200)).item
-  assert.equal(tensionOf(old, NOW), 100, '封顶 100')
+  // 刚记下 = 0（地板只在过了峰期才生效）
+  const fresh = addQuestion(dir, { text: '刚记的' }, NOW).item
+  assert.equal(tensionOf(fresh, NOW), 0)
+
+  // 7 天到顶
+  assert.equal(tensionOf(addQuestion(dir, { text: '满七天' }, at(7 * 24)).item, NOW), 100)
+
+  // 30 天：褪到阈值以下 → 算"释怀"，不再进注入
+  const faded = addQuestion(dir, { text: '一个月没碰' }, at(30 * 24)).item
+  assert.ok(tensionOf(faded, NOW) < LINE_MIN_TENSION, `30 天应低于阈值，实际 ${tensionOf(faded, NOW)}`)
+  assert.equal(isFaded(faded, NOW), true)
+  assert.equal(questionLine(dir, NOW).text.includes('一个月没碰'), false, '释怀了就不该再顶在最前面')
+
+  // 60 天：褪到地板，但条目还在
+  const old = addQuestion(dir, { text: '两个月没碰' }, at(60 * 24)).item
+  assert.equal(tensionOf(old, NOW), 10)
+  assert.equal(loadQuestions(dir).items.some((q) => q.id === old.id), true, '释怀 ≠ 删掉')
 })
 
 test('注入行：只带最重的一条，张力不够就不出现', () => {
