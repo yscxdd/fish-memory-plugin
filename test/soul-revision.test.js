@@ -256,3 +256,35 @@ test('应用：证据不足 3 条 → 拒绝', () => {
   assert.equal(MIN_EVIDENCE, 3)
   assert.equal(SOUL_DRIFT_MAX, 0.2)
 })
+
+test('备注版：证据里没有她自己的声音 → 提案带备注、apply 仍能过（不拦）', () => {
+  const dir = fixture()
+  const toldOnly = PTS.map((p) => ({ ...p, origin: 'told' }))
+  const r = proposeRevision(dir, toldOnly)
+  assert.equal(r.ok, true, r.reason)
+  assert.equal(r.selfVoice, 0)
+  assert.ok(r.voiceNote, '应当给出备注')
+  const body = readFileSync(r.path, 'utf8')
+  assert.match(body, /## 备注（不是拦截）/)
+  assert.match(body, /没有一条是她自己想通的/)
+
+  const a = applyRevision(dir, r.path, toldOnly)
+  assert.equal(a.ok, true, '备注不是闸，apply 要能过')
+  assert.equal(a.warnings.length, 1)
+  assert.match(a.warnings[0], /insight/)
+})
+
+test('备注版：证据里有 insight 时不提示', () => {
+  const dir = fixture()
+  const withVoice = PTS.map((p, i) => ({ ...p, origin: i === 0 ? 'insight' : 'told' }))
+  const r = proposeRevision(dir, withVoice)
+  assert.equal(r.ok, true, r.reason)
+  assert.equal(r.selfVoice, 1)
+  assert.equal(r.voiceNote, null)
+  const body = readFileSync(r.path, 'utf8')
+  assert.match(body, /## 备注\n\n她自己的声音：证据里有 1 条/)
+
+  const a = applyRevision(dir, r.path, withVoice)
+  assert.equal(a.ok, true)
+  assert.deepEqual(a.warnings, [])
+})

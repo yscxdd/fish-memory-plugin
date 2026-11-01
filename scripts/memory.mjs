@@ -663,6 +663,7 @@ function cmdSoul(sub, arg) {
     if (!r.ok) fail(`不提案：${r.reason}（自述漂移 ${((r.sourceDrift || 0) * 100).toFixed(1)}%）`)
     console.log(`✓ 提案已生成：${r.path}`)
     console.log(`  自述漂移 ${(r.sourceDrift * 100).toFixed(1)}% · 本次改动 ${(r.editDrift * 100).toFixed(1)}%（上限 ${(SOUL_DRIFT_MAX * 100).toFixed(0)}%）`)
+    if (r.voiceNote) console.log(`  ⚠ ${r.voiceNote}`)
     console.log('  它**没有**改 soul.md；用 memory soul-apply 应用')
     console.log('  建议先打开看一眼：填一句"她哪里不一样了"，再 apply。')
     return
@@ -676,6 +677,7 @@ function cmdSoul(sub, arg) {
       process.exit(1)
     }
     console.log(`✓ 已应用：soul.md → v${r.version}（旧版 ${r.snapshot}，改动 ${(r.drift * 100).toFixed(1)}%）`)
+    for (const w of r.warnings || []) console.log(`  ⚠ ${w}`)
     console.log(`  changelog 已记一行；7 天内已用 ${changes7d(dir)}/2`)
     return
   }
