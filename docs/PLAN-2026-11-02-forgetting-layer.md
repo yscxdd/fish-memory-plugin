@@ -134,7 +134,7 @@ purged      点文件删除，eviction.log 留墓碑，档案不动
 - [ ] `lib/forget.js`：`isProtected` / 入层判断读 `resurrections`、`inj10`
 - [ ] `50_log/revival.log`：一条一行（id / 分数 / 第几次 / S 前后）
 
-### C. 第二轮删除（半天）· ⏳ 未做（等你确认残片长度与批量上限）
+### C. 第二轮删除（半天）· ✅ v0.30.0 已做（删点 + 墓碑 + 索引；残片 ≤12 字；一次 ≤10 条）
 
 - [ ] `lib/forget.js`：`planForget` 对 `31_dormant/` 里的点算 `purge`（R<0.2 或 层内≥180d）
 - [ ] `applyForget`：`unlinkSync` + `eviction.log` 墓碑（含 S/R/年龄/复活次数）
@@ -164,7 +164,7 @@ purged      点文件删除，eviction.log 留墓碑，档案不动
 - [ ] `MEMORY.md`（库里说明）：新增"遗忘层"一段
 - [ ] CHANGELOG + BACKLOG（这条从 backlog 移到已做）
 
-**进度**：A+B 已在 v0.29.0 落地（8 条新测试）；C 未做；D/E/F 部分已随 A+B 完成。
+**进度**：A+B 在 v0.29.0、C 在 v0.30.0 落地；D/E/F 大部分已随 A/B/C 完成。
 
 ## 六、风险与护栏
 
