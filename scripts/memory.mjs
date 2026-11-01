@@ -72,7 +72,7 @@ import {
 } from '../lib/toolkit.js'
 import { addAsset, assetsRoot, listAssets, loadAssets, retireAsset, unretireAsset, verifyAsset, parseAssetSource } from '../lib/assets.js'
 import { addQuestion, rankedQuestions, resolveQuestion, touchQuestion } from '../lib/questions.js'
-import { assetUsage, computeStats, estimateCost } from '../lib/stats.js'
+import { assetUsage, computeStats, estimateCost, maturity } from '../lib/stats.js'
 import { SOUL_DRIFT_MAX, SOUL_DRIFT_MIN, applyRevision, changes7d, driftOf, mutableRegion, proposeRevision, readSoul } from '../lib/soul.js'
 
 const argv = process.argv.slice(2)
@@ -694,6 +694,14 @@ function cmdStats() {
   if (flagValue('--json') !== undefined || argv.includes('--json')) {
     console.log(JSON.stringify(s, null, 2))
     return
+  }
+  // v0.28.1：她长到哪了（只读统计，借《数字生命》的 L1–L4，但按我们库里的真东西定义）
+  try {
+    const m = maturity(dir)
+    console.log(`成熟度：${m.stage} ${m.label} · 点 ${m.points} · 自述 ${m.self} 篇 · 修订 ${m.revisions} 次${m.stalled ? ' · 停滞风险' : ''}`)
+    if (m.reasons.length) console.log(`  ${m.reasons.join(' · ')}`)
+  } catch {
+    /* 成熟度算不出不影响账本 */
   }
   const price = Number(flagValue('--price') || 4)
   const turns = Number(flagValue('--turns') || 100)

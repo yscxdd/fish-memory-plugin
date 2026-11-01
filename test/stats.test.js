@@ -116,3 +116,49 @@ test('只读：跑完 stats 不写任何文件', () => {
   computeStats(dir, { days: 7, now: NOW })
   assert.equal(readdirSync(join(dir, '50_log')).join(','), before)
 })
+
+test('maturity：L0→L1→L2→L3 按真东西升，停滞是叠加标记', async () => {
+  const { maturity } = await import('../lib/stats.js')
+  const dir = fixture()
+  const fs = await import('node:fs')
+  const path = await import('node:path')
+  // L0：什么都没有
+  assert.equal(maturity(dir, { now: NOW }).stage, 'L0')
+
+  // L1：有点，没自述
+  fs.mkdirSync(path.join(dir, '30_points'), { recursive: true })
+  fs.writeFileSync(
+    path.join(dir, '30_points/M-2026-10-30-001.md'),
+    ['---', 'id: M-2026-10-30-001', 'title: x', 'quote: null', 'date: 2026-10-30', 'salience: 3', 'type: event', 'cluster: 日常', 'status: active', 'source: []', 'links: []', '---', '', '<!-- SUM -->', 'x', '<!-- /SUM -->', ''].join('\n'),
+    'utf8',
+  )
+  assert.equal(maturity(dir, { now: NOW }).stage, 'L1')
+
+  // L2：有自述
+  fs.mkdirSync(path.join(dir, '15_self'), { recursive: true })
+  fs.writeFileSync(path.join(dir, '15_self/2026-10.md'), '## 我是谁\n\nx\n', 'utf8')
+  assert.equal(maturity(dir, { now: NOW }).stage, 'L2')
+
+  // L3：有一次 soul 修订
+  fs.mkdirSync(path.join(dir, '00_core'), { recursive: true })
+  fs.writeFileSync(path.join(dir, '00_core/core_changelog.md'), '2026-10-31 | soul.md | v001 | 人格修订 8.8%\n', 'utf8')
+  const m = maturity(dir, { now: NOW })
+  assert.equal(m.stage, 'L3')
+  assert.equal(m.revisions, 1)
+})
+
+test('maturity：30 天没新点 → 停滞标记', async () => {
+  const { maturity } = await import('../lib/stats.js')
+  const dir = fixture()
+  const fs = await import('node:fs')
+  const path = await import('node:path')
+  fs.mkdirSync(path.join(dir, '30_points'), { recursive: true })
+  fs.writeFileSync(
+    path.join(dir, '30_points/M-2026-08-01-001.md'),
+    ['---', 'id: M-2026-08-01-001', 'title: x', 'quote: null', 'date: 2026-08-01', 'salience: 3', 'type: event', 'cluster: 日常', 'status: active', 'source: []', 'links: []', '---', '', '<!-- SUM -->', 'x', '<!-- /SUM -->', ''].join('\n'),
+    'utf8',
+  )
+  const m = maturity(dir, { now: NOW })
+  assert.equal(m.stalled, true)
+  assert.ok(m.reasons.some((r) => /30 天没有新点/.test(r)))
+})
