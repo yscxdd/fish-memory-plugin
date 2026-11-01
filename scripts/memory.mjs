@@ -31,7 +31,7 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { atomicWriteText, localDay } from '../lib/util.js'
 import { join, resolve } from 'node:path'
-import { applyForget, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
+import { applyForget, findDormant, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
 import { latestRun, startRun } from '../lib/identity.js'
 import { forgottenLog, searchMemory, statusOf } from '../lib/inspect.js'
 import { withLock } from '../lib/lock.js'
@@ -607,6 +607,26 @@ function cmdDormant(sub, arg) {
       console.log(`- ${p.id}  ${String(at).slice(0, 10)}  ${p.title}`)
     }
     console.log(`\n共 ${layer.length} 条 · 复活：memory dormant revive <id>`)
+    return
+  }
+  if (sub === 'find') {
+    if (!arg) fail('用法：memory dormant find <关键词> [--apply]')
+    const hits = findDormant(dir, arg)
+    if (!hits.length) {
+      console.log('遗忘层里没有对得上的。')
+      return
+    }
+    for (const h of hits) console.log(`- ${h.id}  ${String(h.dormant_at || '').slice(0, 10)}  第${h.resurrections}次   ${h.title}`)
+    if (argv.includes('--apply')) {
+      let n = 0
+      for (const h of hits) {
+        const r = revivePoint(dir, h.id)
+        if (r.ok) n += 1
+      }
+      console.log(`✓ 捞回 ${n} 条（时钟从今天重新走；S×1.6）`)
+      return
+    }
+    console.log(`\n共 ${hits.length} 条 · 捞回：同一个关键词加 --apply`)
     return
   }
   if (sub === 'revive') {

@@ -1,4 +1,4 @@
-# 变更年表 · 2026-10-30/31 · v0.5.8 → v0.29.0
+# 变更年表 · 2026-10-30/31 · v0.5.8 → v0.29.1
 
 > 这份是给"回看"用的：哪一版改了什么、为什么改、动了哪条不变量、当时有多少测试。
 > 交接看 `HANDOFF-2026-10-30.md`；契约细节看 `大肥鱼-插件接口契约-v1.0.md`。
@@ -47,9 +47,10 @@
 | v0.28.2 | **缺口会"释怀"** | 397 | 张力先涨到顶、7 天后每天褪 2（地板 10）；`isFaded` + audit 计数 |
 | v0.28.3 | **备注版：她的声音在不在证据里** | 399 | 提案多一节"备注（不是拦截）"；apply 返回 warnings；**不拦** |
 | v0.29.0 | **遗忘层 + 复活** | 407 | 独立目录 `31_dormant/`：30 天/R<0.72 进层，被提起就复活（S×1.6），3 次后转 soft |
+| v0.29.1 | **抄"遗忘补丁"三条** | 411 | 容量上限 200（超了按最低 R 下沉）· `invalid_at` 满 7 天让位 · `dormant find` 两段式 |
 
 **当前规模**：94 个文件（`lib` 42 · `scripts` 11 · `test` 43 · `skills` 1 · `docs` 8）。
-测试 97 → 407（**+310**）。
+测试 97 → 411（**+314**）。
 
 ---
 
@@ -662,6 +663,26 @@ active  →（降级）demoted  →（第一轮，快）dormant：真的移进 3
 **配套**：`31_dormant` 进 scaffold / pack（换机器带走）/ reset；`memory dormant list|revive <id>`；旧 `status=dormant` 可用 `migrateLegacyDormant` 一次性迁入。
 
 - 测试 399 → 407（8 条：移层、四类不进层、复活、3 次转 soft、门槛 +15 天、迁移、pack、scaffold）。
+
+### v0.29.1：从「遗忘补丁」（孔月）借的三条（411 测试）
+
+读完那份 21KB 的 memory-forget.mjs + 两份规则文档，挑出三条能落到我们结构里的：
+
+**① 容量上限 MAX_ACTIVE = 200**
+他们有 maxLines；我们只有"索引层 700 tok"这个**隐式**上限——超了是降级显示，不是淘汰，于是 500 条点也能跑，只是索引被压成一行行标题、检索越来越糊。
+现在：active 超过 200 → 按**最低 R** 下沉到 31_dormant/（pin: hard、oundary、最近注入过的除外），plan 返回 capEvicted。
+
+**② invalid_at 满 7 天就让位（不听 R）**
+他们的 (已取代) 用 14 天稳定度优先归档。我们更糟：lib/forget.js **一行都没读 invalid_at**——标了失效的点还占着位置、还参与检索。
+现在：invalid_at 非空且满 SUPERSEDED_MIN_AGE_DAYS=7 → 直接进遗忘层，理由写"已取代"。
+
+**③ dormant find（两段式：先搜、再捞）**
+他们 --recall 只列不动，--recall-apply 才写回。我们只有 evive <id>（得先知道 id）。
+现在：memory dormant find <关键词> 只读列出（id / 进层日 / 复活次数 / 标题），加 --apply 才捞回（走同一套 evivePoint：S×1.6、时钟重走）。
+
+**没抄的三条**（也写进了 docs/PLAN-2026-11-02-forgetting-layer.md）：行式 memory.md（会毁掉 source/QUOTE 校验）、R<0.1 才忘（event 7 个月，与"一个月就沉"相反）、内容 hash 当身份（改一个字就换人，破坏 invalid_at）。
+
+- 测试 407 → 411（4 条：已取代进层/未满 7 天不动/超限下沉/find 只读）。
 
 
 ---
