@@ -1,7 +1,7 @@
-# fish-memory-plugin v0.26.1
+# fish-memory-plugin v0.27.0
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-381%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-390%20passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependencies-0-blueviolet)
 
 **Local-first long-term memory for AI companions** · 给 AI 伴侣的本地长期记忆插件。
@@ -31,7 +31,7 @@ node scripts/memory.mjs init /tmp/my-memories      # 建一个记忆库（Window
 node scripts/memory.mjs check  --dir /tmp/my-memories
 node scripts/memory.mjs audit  --dir /tmp/my-memories
 node scripts/memory.mjs gold                       # 金标自测：20/20
-npm test                                           # 381 个单测
+npm test                                           # 390 个单测
 ```
 
 你应该看到：
@@ -41,7 +41,7 @@ npm test                                           # 381 个单测
 校验：0 条，0 条有硬错误
 审计通过
 金标：20/20（100%，下限 80%）  阈值 0.8  最小边际 0.68  负例误命中 0
-ℹ tests 381 / pass 381 / fail 0
+ℹ tests 390 / pass 390 / fail 0
 ```
 
 然后打开 `/tmp/my-memories` 看看——**那就是全部**：`00_core/`（灵魂与规则）、`10_archive/`（逐字对话）、`30_points/`（记忆点）、`50_log/`（日志）。没有数据库、没有隐藏状态。
@@ -85,7 +85,7 @@ markdown for the soul/rules/memories, append-only JSONL for the raw transcript.
 - **The archive is append-only** with a `prev/hash` chain; startup verifies it and reports any file that changed.
 - **Injection is budgeted**: 700 tok core / 300 tok body / 2400 tok abilities, degrading `full → summary → index line` instead of truncating blindly.
 - **Everything that reaches the model is sanitized** (fake `<!--` markers split, likely secrets redacted).
-- **381 tests**, a 20-query gold set, a static host-surface check, and a self-audit that encodes the project's own security rules — all run on every PR. The 12-gate `selfcheck` needs a real memory library, so it runs locally (and **fails** on a version or runtime mismatch, instead of reporting green).
+- **390 tests**, a 20-query gold set, a static host-surface check, and a self-audit that encodes the project's own security rules — all run on every PR. The 12-gate `selfcheck` needs a real memory library, so it runs locally (and **fails** on a version or runtime mismatch, instead of reporting green).
 
 It plugs into [DeepSeek Harness](https://github.com/) (DSH) as a bundle; the CLI (`scripts/memory.mjs`)
 works standalone on any folder. License: MIT.
@@ -120,6 +120,7 @@ pm run audit |
 | 到期提醒（**默认开**）：`promise` 写 `due`，到点插一行「该办了」（约 18 tok），同一条 12 小时只提一次 | ❌ 每轮唠叨 |
 | 素材源（**素材在库外**）：`memory asset add --kind book\|doc\|transcript\|image\|audio\|video` 把原文放进库外的 `fish-memory-assets/`，库里只留清单与引用；`source: [asset:<kind>:<id>#L<n>]`，文本类原话逐字校验、图/音视频只验 sha256 | ❌ 把素材原文塞进档案 |
 | 能算账：memory stats 用真实日志算注入均值/分层占比/门控与命中率/每轮成本（只读，不改任何东西） | ❌ 拍脑袋调阈值 |
+| 放不下的事（`question`）：翻记忆翻空了记一条，张力随天数涨、说出来会松；注入只带最重的一条（约 21 tok） | ❌ 假装她什么都不惦记 |
 
 **不做的那些都在文件上**，用脚本或手工做。插件挂了，记忆库一点事没有。
 

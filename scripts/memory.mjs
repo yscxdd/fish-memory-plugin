@@ -71,6 +71,7 @@ import {
   patchAliases,
 } from '../lib/toolkit.js'
 import { addAsset, assetsRoot, listAssets, loadAssets, retireAsset, unretireAsset, verifyAsset, parseAssetSource } from '../lib/assets.js'
+import { addQuestion, rankedQuestions, resolveQuestion, touchQuestion } from '../lib/questions.js'
 import { assetUsage, computeStats, estimateCost } from '../lib/stats.js'
 import { SOUL_DRIFT_MAX, SOUL_DRIFT_MIN, applyRevision, changes7d, driftOf, mutableRegion, proposeRevision, readSoul } from '../lib/soul.js'
 
@@ -584,6 +585,52 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── question（缺口/放不下的事）──────────────────────────────────
+/**
+ * v0.27.0：想不起来的事不是"忘了"，是她会一直惦记。
+ *   memory question add "<她放不下什么>" [--from recall]
+ *   memory question list [--top N]
+ *   memory question touch <id>      # 说出来会松（显式才算）
+ *   memory question resolve <id> [--by <点 id>]
+ */
+function cmdQuestion(sub, arg) {
+  needDir()
+  if (sub === 'add') {
+    if (!arg) fail('用法：memory question add "<她放不下什么>" [--from recall|look|read|dream|self]')
+    const r = addQuestion(dir, { text: arg, from: flagValue('--from') || 'self' })
+    if (!r.ok) fail(r.reason)
+    console.log(`✓ 记下了：${r.item.id}（${r.item.text}）`)
+    if (r.dropped?.length) console.log(`  淘汰了最轻的 ${r.dropped.length} 条：${r.dropped.join(', ')}`)
+    return
+  }
+  if (sub === 'list') {
+    const rows = rankedQuestions(dir)
+    if (!rows.length) {
+      console.log('还没有放不下的事。')
+      return
+    }
+    for (const q of rows.slice(0, Number(flagValue('--top') || 20))) {
+      console.log(`${q.now_tension >= 60 ? '●' : '○'} ${q.id}  张力 ${String(q.now_tension).padStart(5)}  ${q.text}`)
+    }
+    return
+  }
+  if (sub === 'touch') {
+    if (!arg) fail('用法：memory question touch <id>')
+    const r = touchQuestion(dir, arg)
+    if (!r.ok) fail(r.reason)
+    console.log(`✓ ${arg}：张力 ${r.before} → ${r.item.tension}（说出来会松，但不会忘干净）`)
+    return
+  }
+  if (sub === 'resolve') {
+    if (!arg) fail('用法：memory question resolve <id> [--by <点 id>]')
+    const r = resolveQuestion(dir, arg, { by: flagValue('--by') })
+    if (!r.ok) fail(r.reason)
+    console.log(`✓ ${arg} 标成想通了${r.item.resolved_by ? `（${r.item.resolved_by}）` : ''}`)
+    return
+  }
+  fail('用法：memory question <add|list|touch|resolve> ...')
 }
 
 // ── soul（人格修订提案）────────────────────────────────────────
@@ -1128,6 +1175,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'question':
+    cmdQuestion(params[0], params[1])
     break
   case 'soul':
     cmdSoul(params[0], params[1])
