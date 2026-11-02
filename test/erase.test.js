@@ -40,7 +40,8 @@ async function seed({ withBackup = false } = {}) {
   mkdirSync(join(dir, '20_state'), { recursive: true })
   const w = new ArchiveWriter(dir, { logger: { warn() {} } })
   await w.handle('s1', event(1, 'msg-a', '第一条：今天聊了天气'))
-  await w.handle('s1', event(2, 'msg-b', '第二条：密码是 hunter2'))
+  // v0.31.0：入库前会脱敏，所以这里用不会被脱敏的哨兵串（"暗号"不在凭据关键词表里）
+  await w.handle('s1', event(2, 'msg-b', '第二条：暗号是 zzq-hunter2-zzq'))
   await w.handle('s1', event(3, 'msg-c', '第三条：晚安'))
   checkArchive(dir) // 建基线：模拟"这个版本早就跑过"
 

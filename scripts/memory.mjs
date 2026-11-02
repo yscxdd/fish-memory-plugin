@@ -32,6 +32,7 @@ import { appendFileSync, existsSync, mkdirSync, renameSync, unlinkSync, writeFil
 import { atomicWriteText, localDay } from '../lib/util.js'
 import { join, resolve } from 'node:path'
 import { applyForget, findDormant, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
+import { redactArchive } from '../lib/archive.js'
 import { latestRun, startRun } from '../lib/identity.js'
 import { forgottenLog, searchMemory, statusOf } from '../lib/inspect.js'
 import { withLock } from '../lib/lock.js'
@@ -585,6 +586,33 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── redact（隐私脱敏）──────────────────────────────────────────
+/**
+ * v0.31.0：扫旧档案，把明文密钥/手机号/身份证换成标记。
+ *   memory redact            先看（dry，不动任何文件）
+ *   memory redact --apply    真的改（会重算档案链，并写 50_log/redaction.log）
+ */
+function cmdRedact() {
+  needDir()
+  const apply = argv.includes('--apply')
+  const r = redactArchive(dir, { dry: !apply })
+  if (!r.scanned) {
+    console.log('档案里没有东西可扫。')
+    return
+  }
+  if (!r.changed) {
+    console.log(`扫了 ${r.scanned} 条，没有发现敏感信息。`)
+    return
+  }
+  const sum = r.hits.map((h) => `${h.kind}×${h.count}`).join(' · ')
+  if (!apply) {
+    console.log(`扫了 ${r.scanned} 条，命中 ${r.changed} 条（${sum}）。`)
+    console.log('确认要改就加 --apply（会重算档案链，并写 50_log/redaction.log）')
+    return
+  }
+  console.log(`✓ 已脱敏 ${r.changed}/${r.scanned} 条（${sum}）；链已重算，日志在 50_log/redaction.log`)
 }
 
 // ── dormant（遗忘层）────────────────────────────────────────────
@@ -1237,6 +1265,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'redact':
+    cmdRedact()
     break
   case 'dormant':
     cmdDormant(params[0], params[1])

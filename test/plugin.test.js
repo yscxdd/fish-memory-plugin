@@ -510,7 +510,8 @@ test('档案兼容旧记录：没有 seq/hash 的旧行不判坏，新记录接�
   const dir = makeMemory()
   mkdirSync(join(dir, '10_archive/messages'), { recursive: true })
   const now = Date.now()
-  const day = localDay(new Date(now - 60_000))
+  // v0.31.0：用 now 而不是 now-60s 算文件名——跨午夜时旧行会落到前一天的文件里，链条就接不上
+  const day = localDay(new Date(now))
   const old = {
     id: 'msg-old',
     seq: null,
