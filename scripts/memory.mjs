@@ -47,6 +47,7 @@ import { abGold, GOLD_FLOOR, runGold, WEIGHT_SETS } from '../lib/goldset.js'
 import { checkHost } from '../lib/hostcheck.js'
 import { HOST_POINTS } from '../lib/host.js'
 import { packMemory, unpackMemory } from '../lib/pack.js'
+import { RETURN_GAP_HOURS, loadPresence, presenceSummary, returnLine } from '../lib/presence.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -587,6 +588,18 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── presence（在场记录 / 回来第一句）────────────────────────────
+/** v0.35.0：看"他上次在场是多久前"。回来第一句就是靠这个算的。 */
+function cmdPresence() {
+  needDir()
+  console.log(presenceSummary(dir))
+  const state = loadPresence(dir)
+  if (state.lastSeen) {
+    const r = returnLine({ state, lastTopic: '', question: '' })
+    console.log(r.shown ? `下次他回来会看到：${r.text}` : `（间隔 < ${RETURN_GAP_HOURS} 小时，或这次已经说过）`)
+  }
 }
 
 // ── snapshot（快照 / 回滚）──────────────────────────────────────
@@ -1369,6 +1382,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'presence':
+    cmdPresence()
     break
   case 'snapshot':
     cmdSnapshot(params[0])
