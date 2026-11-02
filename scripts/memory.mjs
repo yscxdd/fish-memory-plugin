@@ -48,6 +48,7 @@ import { checkHost } from '../lib/hostcheck.js'
 import { HOST_POINTS } from '../lib/host.js'
 import { packMemory, unpackMemory } from '../lib/pack.js'
 import { RETURN_GAP_HOURS, loadPresence, presenceSummary, returnLine } from '../lib/presence.js'
+import { addHabit, habitsBlock, habitsSummary } from '../lib/habits.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -588,6 +589,38 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── habit（说话习惯）────────────────────────────────────────────
+/**
+ * v0.36.0：权重自动、文本人写。
+ *   memory habit list            看权重与门限
+ *   memory habit add "不主动说教"  加一条（默认 w=0.4，还没证明她做得到）
+ *   memory habit block           看现在会注入什么
+ */
+function cmdHabit(sub, arg) {
+  needDir()
+  if (sub === 'list' || !sub) {
+    const rows = habitsSummary(dir)
+    for (const r of rows) {
+      console.log(`- ${r.level.padEnd(2)} w=${r.w.toFixed(3)}  命中${r.hits} 违反${r.violations}  ${r.text}`)
+    }
+    console.log('\n门限：≥0.75 硬性 · ≥0.5 平时 · <0.3 归档（不注入）')
+    return
+  }
+  if (sub === 'add') {
+    if (!arg) fail('用法：memory habit add "习惯文本"')
+    const r = addHabit(dir, arg)
+    if (!r.ok) fail(r.reason)
+    console.log(`✓ 已加（共 ${r.count} 条）。文本人写，权重由她自己的表现涨落。`)
+    return
+  }
+  if (sub === 'block') {
+    const b = habitsBlock(dir)
+    console.log(b.text ? `${b.text}   （${b.tokens} tok）` : '（现在没有够重的习惯，不注入）')
+    return
+  }
+  fail('用法：memory habit <list|add|block> ...')
 }
 
 // ── presence（在场记录 / 回来第一句）────────────────────────────
@@ -1382,6 +1415,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'habit':
+    cmdHabit(params[0], params[1])
     break
   case 'presence':
     cmdPresence()
