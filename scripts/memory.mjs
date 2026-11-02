@@ -28,9 +28,9 @@
  * flags：--dir <path>  --json  --check  --write  --force  --out <dir>
  */
 
-import { appendFileSync, existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { atomicWriteText, localDay } from '../lib/util.js'
-import { join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { applyForget, findDormant, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
 import { redactArchive } from '../lib/archive.js'
 import { acceptVoice, listProposals, mineVoice, readProposal, rejectVoice, writeVoiceProposal } from '../lib/voice.js'
@@ -587,6 +587,52 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── snapshot（快照 / 回滚）──────────────────────────────────────
+/**
+ * v0.34.0：借"天上鱼"的快照纪律——改之前先拍一张，红了退回，不往前打补丁。
+ *   memory snapshot              拍一张（自动带时间戳）
+ *   memory snapshot 改遗忘参数    带个标签
+ *   memory snapshot --list       看有哪些
+ *   memory snapshot --restore <名> --force   回滚（会覆盖当前库，必须 --force）
+ */
+function snapshotRoot() {
+  return join(dirname(dir), 'fish-memory-snapshots')
+}
+
+function cmdSnapshot(arg) {
+  needDir()
+  const root = snapshotRoot()
+  if (argv.includes('--list')) {
+    if (!existsSync(root)) {
+      console.log('还没有快照。')
+      return
+    }
+    const items = readdirSync(root).filter((f) => f.startsWith('snap-')).sort()
+    if (!items.length) {
+      console.log('还没有快照。')
+      return
+    }
+    for (const f of items) console.log(`- ${f}`)
+    return
+  }
+  if (argv.includes('--restore')) {
+    const name = argv[argv.indexOf('--restore') + 1]
+    if (!name) fail('用法：memory snapshot --restore <snap-...> --force')
+    const src = join(root, name)
+    if (!existsSync(src)) fail(`找不到快照：${src}`)
+    if (!argv.includes('--force')) fail('回滚会覆盖当前库；确认无误请加 --force')
+    const r = unpackMemory(src, dir, { force: true })
+    console.log(`✓ 已回滚到 ${name}（${r.files} 个文件）`)
+    return
+  }
+  const tag = String(arg || 'snap').replace(/[^\w\u4e00-\u9fa5-]+/g, '-').slice(0, 24)
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-')
+  const dest = join(root, `snap-${stamp}-${tag}`)
+  const r = packMemory(dir, dest, { force: true })
+  console.log(`✓ 快照 ${r.files} 个文件，${(r.bytes / 1024 / 1024).toFixed(2)} MB → ${dest}`)
+  console.log('  回滚：memory snapshot --restore ' + basename(dest) + ' --force')
 }
 
 // ── voice（口癖采集）────────────────────────────────────────────
@@ -1323,6 +1369,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'snapshot':
+    cmdSnapshot(params[0])
     break
   case 'voice':
     cmdVoice(params[0], params[1])
