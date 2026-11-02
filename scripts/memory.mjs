@@ -33,6 +33,7 @@ import { atomicWriteText, localDay } from '../lib/util.js'
 import { join, resolve } from 'node:path'
 import { applyForget, findDormant, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
 import { redactArchive } from '../lib/archive.js'
+import { acceptVoice, listProposals, mineVoice, readProposal, rejectVoice, writeVoiceProposal } from '../lib/voice.js'
 import { latestRun, startRun } from '../lib/identity.js'
 import { forgottenLog, searchMemory, statusOf } from '../lib/inspect.js'
 import { withLock } from '../lib/lock.js'
@@ -586,6 +587,63 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── voice（口癖采集）────────────────────────────────────────────
+/**
+ * v0.33.0：只提案，不改 voice.md。
+ *   memory voice mine              从档案里挑"她真说过、反复说"的句子 → 40_pending/ 提案
+ *   memory voice list              看现有提案
+ *   memory voice accept 1,3|all    接受（才写 voice.md，并记 core_changelog）
+ *   memory voice reject 2|all      拒绝（以后不再提）
+ */
+function cmdVoice(sub, arg) {
+  needDir()
+  if (sub === 'mine') {
+    const limit = Number(flagValue('--limit') || 12)
+    const c = mineVoice(dir, { limit })
+    if (!c.length) {
+      console.log('没有可提议的句子（要么样本太少，要么都已经在 voice.md 里）。')
+      return
+    }
+    const r = writeVoiceProposal(dir, c)
+    console.log(`✓ 提案 ${r.count} 句 → ${r.path}`)
+    console.log('  它**没有**改 voice.md；打开看一眼，再 memory voice accept 1,3|all')
+    return
+  }
+  if (sub === 'list') {
+    const files = listProposals(dir)
+    if (!files.length) {
+      console.log('还没有提案。先 memory voice mine')
+      return
+    }
+    for (const f of files) {
+      const items = readProposal(dir, f)
+      console.log(`- ${f}  （${items.length} 句）`)
+      for (const it of items) console.log(`    ${it.n}. ${it.text}`)
+    }
+    return
+  }
+  if (sub === 'accept' || sub === 'reject') {
+    const files = listProposals(dir)
+    if (!files.length) fail('还没有提案，先 memory voice mine')
+    const file = files[files.length - 1]
+    const items = readProposal(dir, file)
+    const picks = arg === 'all' || !arg ? items : items.filter((it) => arg.split(',').map((x) => x.trim()).includes(String(it.n)))
+    if (!picks.length) fail('没选中任何一句（用法：memory voice accept 1,3 | all）')
+    const texts = picks.map((x) => x.text)
+    if (sub === 'accept') {
+      const r = acceptVoice(dir, texts, { proposalPath: file })
+      if (!r.ok) fail(r.reason)
+      console.log(`✓ 已写进 voice.md：第 ${r.from}–${r.to} 段（共 ${r.added} 句）· changelog v${String(r.version).padStart(3, '0')}`)
+      console.log('  别忘了：voice.md 是核心层，改完建议跑一次 memory verify')
+    } else {
+      const r = rejectVoice(dir, texts)
+      console.log(`✓ 已拒绝 ${r.rejected} 句（累计 ${r.total} 句）；以后不会再提`)
+    }
+    return
+  }
+  fail('用法：memory voice <mine|list|accept|reject> ...')
 }
 
 // ── redact（隐私脱敏）──────────────────────────────────────────
@@ -1265,6 +1323,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'voice':
+    cmdVoice(params[0], params[1])
     break
   case 'redact':
     cmdRedact()
