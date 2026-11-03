@@ -53,6 +53,8 @@ import { readWere, writeWere } from '../lib/were.js'
 import { addSpecial, emotionLine, emptyState, loadEmotion, saveEmotion, specialsLine, TIER_DEFAULT, TIER_TEXT } from '../lib/emotion.js'
 import { behaviorCounts, pruneBehavior } from '../lib/behavior.js'
 import { detectSleep, loadSleep, settle } from '../lib/sleep.js'
+import { addEntity, loadEntityIndex, loadEntityRegistry, rebuildEntityIndex } from '../lib/entities.js'
+import { timeLabel, timelineCounts, timelineRows } from '../lib/time.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -593,6 +595,73 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── entity（实体表）────────────────────────────────────────────
+/**
+ * v0.40.0：登记表人写，索引派生。
+ *   memory entity add 我妈 --kind person --aliases 妈妈,母亲
+ *   memory entity list
+ *   memory entity rebuild
+ *   memory entity show 我妈
+ */
+function cmdEntity(sub, args) {
+  needDir()
+  if (sub === 'add') {
+    const name = args[0]
+    if (!name) fail('用法：memory entity add <名字> [--kind person|place|thing|topic] [--aliases a,b]')
+    const kind = flagValue('--kind') || 'thing'
+    const aliases = String(flagValue('--aliases') || '').split(',').map((s) => s.trim()).filter(Boolean)
+    const r = addEntity(dir, { name, kind, aliases })
+    if (!r.ok) fail(r.reason)
+    console.log(`✓ ${r.merged ? '已合并别名' : '已登记'}：${r.entity.name}（${r.entity.kind}）${r.entity.aliases.length ? ' · 别名 ' + r.entity.aliases.join('/') : ''}`)
+    rebuildEntityIndex(dir)
+    return
+  }
+  if (sub === 'list') {
+    const reg = loadEntityRegistry(dir)
+    if (!reg.entities.length) {
+      console.log('还没有登记实体。')
+      return
+    }
+    const idx = loadEntityIndex(dir)
+    for (const e of reg.entities) {
+      const n = (idx[e.name] || []).length
+      console.log(`- ${e.name.padEnd(6)} ${e.kind.padEnd(5)} ${n} 条点${e.aliases.length ? ' · 别名 ' + e.aliases.join('/') : ''}`)
+    }
+    return
+  }
+  if (sub === 'rebuild') {
+    const r = rebuildEntityIndex(dir)
+    console.log(`✓ 重建索引：${r.entities} 个实体，命中 ${r.matched} 个，扫了 ${r.points} 条点`)
+    return
+  }
+  if (sub === 'show') {
+    const name = args[0]
+    if (!name) fail('用法：memory entity show <名字>')
+    rebuildEntityIndex(dir)
+    const ids = loadEntityIndex(dir)[name] || []
+    console.log(`${name}：${ids.length} 条点`)
+    for (const id of ids) console.log(`  - ${id}`)
+    return
+  }
+  fail('用法：memory entity <add|list|rebuild|show> ...')
+}
+
+// ── timeline（时间轴）──────────────────────────────────────────
+/** v0.40.0：看"现在 / 过去 / 计划"各有多少，顺便列计划的。 */
+function cmdTimeline() {
+  needDir()
+  const now = new Date()
+  const pts = readPointFiles(dir, '30_points')
+  const c = timelineCounts(pts, now)
+  console.log(`现在 ${c.current} · 过去 ${c.past} · 计划 ${c.future}（共 ${pts.length} 条）`)
+  const rows = timelineRows(pts, now).filter((r) => r.bucket !== 'current')
+  for (const r of rows.slice(0, 20)) {
+    const when = r.bucket === 'future' ? r.valid_from : r.invalid_at || r.expires_at
+    console.log(`  [${timeLabel(r.bucket)}] ${String(when || '').slice(0, 10)}  ${r.title}`)
+  }
+  if (!rows.length) console.log('  （没有过去或计划的点）')
 }
 
 // ── sleep（睡觉 / 结算）────────────────────────────────────────
@@ -1516,6 +1585,12 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'entity':
+    cmdEntity(params[0], params.slice(1))
+    break
+  case 'timeline':
+    cmdTimeline()
     break
   case 'sleep':
     cmdSleep()
