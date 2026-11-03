@@ -57,6 +57,7 @@ import { addEntity, loadEntityIndex, loadEntityRegistry, rebuildEntityIndex } fr
 import { timeLabel, timelineCounts, timelineRows } from '../lib/time.js'
 import { recentTamper, refreshFingerprint } from '../lib/tamper.js'
 import { addWorkspace, buildFileIndex, indexStats, listAll, readIndexedFile, removeWorkspace, searchFiles } from '../lib/workspaces.js'
+import { everythingStatus, findWithEverything, saveConfig } from '../lib/everything.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -599,6 +600,34 @@ function cmdVault() {
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
 }
 
+// ── es（Everything 加速器）────────────────────────────────────
+/**
+ * v0.43.0：Everything 是可选加速器，不是依赖。
+ *   memory es              看状态（有没有 es.exe、从哪找到的）
+ *   memory es setup <路径>  手动指定 es.exe（也可以设 EVERYTHING_ES）
+ *   memory es off / on     关掉/打开（关掉就只用本地索引）
+ */
+function cmdEs(sub, arg) {
+  needDir()
+  if (sub === 'setup') {
+    if (!arg) fail('用法：memory es setup <es.exe 的完整路径>')
+    if (!existsSync(arg)) fail(`找不到：${arg}`)
+    saveConfig(dir, { esPath: arg })
+    console.log(`✓ 已记住 es.exe：${arg}`)
+    return
+  }
+  if (sub === 'off' || sub === 'on') {
+    saveConfig(dir, { enabled: sub === 'on' })
+    console.log(`✓ Everything 加速器已${sub === 'on' ? '打开' : '关闭'}（关掉就只用本地索引）`)
+    return
+  }
+  const st = everythingStatus(dir)
+  console.log(`Everything 加速器：${st.enabled ? '开' : '关'} · ${st.available ? '可用' : '不可用'}`)
+  if (st.available) console.log(`  es.exe：${st.esPath}（来自 ${st.source}）`)
+  else console.log(`  原因：${st.reason || '未知'}`)
+  console.log('  找不到时 memory find 会自动回落到本地索引，不影响使用。')
+}
+
 // ── ws / find / read（工作区文件索引）──────────────────────────
 /**
  * v0.42.0：只索引名字，读文件是另一条显式的路（三道闸）。
@@ -644,17 +673,44 @@ function cmdWs(sub, arg) {
 
 function cmdFind(q) {
   needDir()
-  if (!q) fail('用法：memory find <关键词>')
+  if (!q) fail('用法：memory find <关键词> [--local]')
+  const localOnly = argv.includes('--local')
+
+  // v0.43.0：先问 Everything（全盘、毫秒级），但**结果必须过滤到登记工作区**
+  if (!localOnly) {
+    const es = findWithEverything(dir, q, { limit: 30 })
+    if (es.ok && es.hits.length) {
+      for (const h of es.hits) console.log(`- ${h.n}  ${Math.round(h.s / 1024)}KB  ${h.p}`)
+      console.log(`共 ${es.hits.length} 条（Everything${es.dropped ? ` · 已挡掉工作区外 ${es.dropped} 条` : ''}）`)
+      logFind({ q, mode: 'everything', hits: es.hits.length, dropped: es.dropped })
+      return
+    }
+    if (es.ok && !es.hits.length) {
+      // Everything 搜到了但全在工作区外：说明"登记目录里没有"，仍然回落到本地索引确认
+      logFind({ q, mode: 'everything-empty', hits: 0, dropped: es.dropped })
+    }
+  }
+
   const r = searchFiles(dir, q, { limit: 20 })
   if (!r.hits.length) {
     console.log(`没找到「${q}」。${r.built ? '（刚建了索引）' : ''}`)
+    logFind({ q, mode: 'local', hits: 0, dropped: 0 })
     return
   }
-  for (const h of r.hits) {
-    const kb = Math.round(h.s / 1024)
-    console.log(`- ${h.n}  ${kb}KB  ${h.p}`)
+  for (const h of r.hits) console.log(`- ${h.n}  ${Math.round(h.s / 1024)}KB  ${h.p}`)
+  console.log(`共 ${r.total} 条（本地索引${r.built ? ' · 刚建了索引' : ''}）`)
+  logFind({ q, mode: 'local', hits: r.hits.length, dropped: 0 })
+}
+
+/** 找文件也记账：她查过什么、有没有伸到工作区外 */
+function logFind(row) {
+  try {
+    const line = { at: new Date().toISOString(), ...row }
+    mkdirSync(join(dir, '50_log'), { recursive: true })
+    appendFileSync(join(dir, '50_log', 'find.log'), JSON.stringify(line) + '\n', 'utf8')
+  } catch {
+    /* 记账失败不影响查找 */
   }
-  console.log(`共 ${r.total} 条${r.built ? ' · 刚建了索引' : ''}`)
 }
 
 function cmdRead(p) {
@@ -1685,6 +1741,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'es':
+    cmdEs(params[0], params[1])
     break
   case 'ws':
     cmdWs(params[0], params[1])
