@@ -49,6 +49,7 @@ import { HOST_POINTS } from '../lib/host.js'
 import { packMemory, unpackMemory } from '../lib/pack.js'
 import { RETURN_GAP_HOURS, loadPresence, presenceSummary, returnLine } from '../lib/presence.js'
 import { addHabit, habitsBlock, habitsSummary } from '../lib/habits.js'
+import { readWere, writeWere } from '../lib/were.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -589,6 +590,25 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── were（上次聊到哪儿）────────────────────────────────────────
+/** v0.37.0：读/重写「上次聊到哪儿」的纸条（给轻唤醒用，只摘原话不写结论）。 */
+function cmdWere() {
+  needDir()
+  const apply = argv.includes('--write')
+  if (apply) {
+    const r = writeWere(dir, { points: readPointFiles(dir, '30_points') })
+    console.log(`✓ 已重写 ${r.path}（${r.chars} 字）`)
+    return
+  }
+  const text = readWere(dir)
+  if (!text) {
+    console.log('还没有纸条。加 --write 生成一张。')
+    return
+  }
+  console.log(text)
+  console.log(`（${[...text].length} 字 · 重写：memory were --write）`)
 }
 
 // ── habit（说话习惯）────────────────────────────────────────────
@@ -1415,6 +1435,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'were':
+    cmdWere()
     break
   case 'habit':
     cmdHabit(params[0], params[1])

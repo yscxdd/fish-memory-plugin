@@ -87,12 +87,14 @@ test('让位：安慰一响，兴头立刻退场（两个状态机不许同时�
 test('注入行：只发数字/枚举，≤40 tok；平静且不显眼时不发', () => {
   const { st } = run([NEG, NEG])
   const line = emotionLine(st, CFG)
-  assert.ok(line.text.includes('安慰中'), line.text)
+  // v0.37.0：只发人话，不发数字
+  assert.ok(line.text.includes('先接住'), line.text)
+  assert.equal(/[0-9]/.test(line.text), false, '不该出现数字：' + line.text)
   assert.ok(line.tokens <= 40, `情绪块 ${line.tokens} tok 超过 40`)
 
   const quiet = emptyState(CFG)
   assert.equal(emotionLine(quiet, CFG).text, '', '平静时默认不发（省 token）')
-  assert.ok(emotionLine(quiet, { ...CFG, showWhenQuiet: true }).text.includes('常态'))
+  assert.ok(emotionLine(quiet, { ...CFG, showWhenQuiet: true }).text.includes('平常'))
 })
 
 test('状态持久化：写出去读回来一致；文件坏了当没有（不影响对话）', () => {
