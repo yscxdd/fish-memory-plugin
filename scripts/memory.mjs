@@ -58,6 +58,8 @@ import { timeLabel, timelineCounts, timelineRows } from '../lib/time.js'
 import { recentTamper, refreshFingerprint } from '../lib/tamper.js'
 import { addWorkspace, buildFileIndex, indexStats, listAll, readIndexedFile, removeWorkspace, searchFiles } from '../lib/workspaces.js'
 import { everythingStatus, findWithEverything, saveConfig } from '../lib/everything.js'
+import { TUNABLES, effectiveValue, resetSetting, setSetting } from '../lib/settings.js'
+import { writeReport } from '../lib/report.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -599,6 +601,63 @@ function cmdVault() {
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
 }
+
+// ── report（静态状态报告）──────────────────────────────────────
+/**
+ * v0.45.0：生成一页自包含 HTML，双击就开。**只读**，不改任何状态。
+ *   memory report            生成到 90_snapshot/report-<时间>.html 并打印路径
+ *   memory report --out <f>  指定路径
+ */
+function cmdReport() {
+  needDir()
+  const outIdx = argv.indexOf('--out')
+  const out = outIdx >= 0 ? argv[outIdx + 1] : null
+  const r = writeReport(dir, { out })
+  const d = r.data
+  console.log(`✓ 报告已生成：${r.path}（${Math.round(r.bytes / 1024)} KB）`)
+  console.log(`  成熟度 ${d.maturity?.level || '—'} · 点 ${d.counts.points} · 待审 ${d.counts.pending} · 情绪 ${d.emotion.label}（tier ${d.emotion.tier}）`)
+  console.log('  这个文件不会自己更新：想刷新就再跑一次。')
+}
+
+// ── config（可调参数）────────────────────────────────────────
+/**
+ * v0.45.0：白名单参数，一次写一个，带说明和范围校验，改动记 50_log/settings.log。
+ *   memory config              看所有可调参数（当前值 / 默认值 / 生效时机）
+ *   memory config set <键> <值>
+ *   memory config reset <键>
+ */
+function cmdConfig(sub, args) {
+  needDir()
+  if (sub === 'set') {
+    const [key, ...rest] = args
+    if (!key || !rest.length) fail('用法：memory config set <键> <值>')
+    const r = setSetting(dir, key, rest.join(' '))
+    if (!r.ok) fail(r.reason)
+    console.log(`✓ ${r.key}：${fmtVal(r.from)} → ${fmtVal(r.to)}${r.apply === 'restart' ? '（重载插件后生效）' : '（下一轮生效）'}`)
+    return
+  }
+  if (sub === 'reset') {
+    const key = args[0]
+    if (!key) fail('用法：memory config reset <键>')
+    const r = resetSetting(dir, key)
+    if (!r.ok) fail(r.reason)
+    console.log(r.unchanged ? `${r.key} 本来就是默认值` : `✓ ${r.key} 已恢复默认：${fmtVal(r.to)}`)
+    return
+  }
+  const rows = []
+  for (const spec of TUNABLES) {
+    const cur = effectiveValue(dir, spec)
+    rows.push([spec.key, fmtVal(cur), fmtVal(spec.default), spec.apply === 'restart' ? '重载' : '下一轮', spec.doc])
+  }
+  const w = Math.max(...rows.map((r) => r[0].length))
+  for (const [k, cur, def, when, doc] of rows) {
+    const mark = cur === def ? ' ' : '*'
+    console.log(`${mark} ${k.padEnd(w)}  ${String(cur).padStart(6)}  (默认 ${def})  ${when.padEnd(6)} ${doc}`)
+  }
+  console.log('\n* = 改过的。用 memory config set <键> <值> 改，reset 恢复默认。')
+}
+
+const fmtVal = (v) => (typeof v === 'boolean' ? (v ? 'on' : 'off') : String(v))
 
 // ── es（Everything 加速器）────────────────────────────────────
 /**
@@ -1770,6 +1829,12 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'report':
+    cmdReport()
+    break
+  case 'config':
+    cmdConfig(params[0], params.slice(1))
     break
   case 'es':
     cmdEs(params[0], params[1])
