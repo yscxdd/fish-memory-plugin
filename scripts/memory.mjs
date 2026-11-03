@@ -52,6 +52,7 @@ import { addHabit, habitsBlock, habitsSummary } from '../lib/habits.js'
 import { readWere, writeWere } from '../lib/were.js'
 import { addSpecial, emotionLine, emptyState, loadEmotion, saveEmotion, specialsLine, TIER_DEFAULT, TIER_TEXT } from '../lib/emotion.js'
 import { behaviorCounts, pruneBehavior } from '../lib/behavior.js'
+import { detectSleep, loadSleep, settle } from '../lib/sleep.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -592,6 +593,26 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── sleep（睡觉 / 结算）────────────────────────────────────────
+/**
+ * v0.39.0：
+ *   memory sleep            看"现在算不算睡过一觉"（只读）
+ *   memory sleep --now      手动结算一次（补账用；幂等）
+ */
+function cmdSleep() {
+  needDir()
+  const now = new Date()
+  if (argv.includes('--now')) {
+    const r = settle(dir, { now, points: readPointFiles(dir, '30_points') })
+    console.log(r.slept ? `✓ 结算完成：睡了 ${r.hours} 小时，tier ${r.emotion.tierFrom}→${r.emotion.tierTo}` : `没睡（${r.reason}）；维护已跑`)
+    return
+  }
+  const det = detectSleep(dir, { now })
+  const st = loadSleep(dir)
+  console.log(det.slept ? `算睡过：夜间静默 ${det.hours} 小时` : `不算睡过（${det.reason}）· 夜间重叠 ${det.hours} 小时`)
+  console.log(`上次睡醒：${st.lastSleepAt ? String(st.lastSleepAt).slice(0, 16).replace('T', ' ') : '（还没有）'} · 累计 ${st.nights || 0} 次`)
 }
 
 // ── emotion（情绪状态 / 她自己挂情绪）──────────────────────────
@@ -1495,6 +1516,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'sleep':
+    cmdSleep()
     break
   case 'emotion':
     cmdEmotion('show', [])
