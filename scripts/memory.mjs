@@ -50,6 +50,8 @@ import { packMemory, unpackMemory } from '../lib/pack.js'
 import { RETURN_GAP_HOURS, loadPresence, presenceSummary, returnLine } from '../lib/presence.js'
 import { addHabit, habitsBlock, habitsSummary } from '../lib/habits.js'
 import { readWere, writeWere } from '../lib/were.js'
+import { addSpecial, emotionLine, emptyState, loadEmotion, saveEmotion, specialsLine, TIER_DEFAULT, TIER_TEXT } from '../lib/emotion.js'
+import { behaviorCounts, pruneBehavior } from '../lib/behavior.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -590,6 +592,64 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── emotion（情绪状态 / 她自己挂情绪）──────────────────────────
+/**
+ * v0.38.0：
+ *   memory emotion                         看档位与挂着的情绪（不发数字给她，只给人看）
+ *   memory feel 委屈 0 "他说那话没看我"      她自己挂一个情绪（0 分钟 = 等他开口才散）
+ */
+function cmdEmotion(sub, args) {
+  needDir()
+  const st = loadEmotion(dir) || emptyState()
+  if (sub === 'feel') {
+    const [id, mins, ...rest] = args
+    if (!id) fail('用法：memory feel <情绪> [分钟] [原因]')
+    const r = addSpecial(st, { id, minutes: Number(mins) || 0, cause: rest.join(' ') })
+    if (!r.ok) fail(r.reason)
+    saveEmotion(dir, st)
+    mkdirSync(join(dir, '50_log'), { recursive: true })
+    appendFileSync(
+      join(dir, '50_log', 'emotion-manual.jsonl'),
+      JSON.stringify({ at: new Date().toISOString(), id: r.item.id, minutes: Number(mins) || 0, cause: r.item.cause, strength: r.item.strength }) + '\n',
+      'utf8',
+    )
+    console.log(`✓ 挂上了：${r.item.id}（强度 ${r.item.strength}${Number(mins) > 0 ? `，${mins} 分钟后自己散` : '，等他开口才散'}）`)
+    return
+  }
+  const tier = Number.isFinite(Number(st.tier)) ? Number(st.tier) : TIER_DEFAULT
+  console.log(`档位：${tier} ${TIER_TEXT[tier] || ''}${st.frozenUntil && Date.parse(st.updatedAt || 0) ? '' : ''}`)
+  const sp = specialsLine(st)
+  console.log(`挂着的：${sp || '（没有）'}`)
+  const line = emotionLine(st, { showWhenQuiet: true })
+  console.log(`会注入：${line.text || '（空）'}  ${line.tokens || 0} tok`)
+}
+
+// ── behavior（行为账本）────────────────────────────────────────
+/**
+ * v0.38.0：只记数、不推分。默认看 7 天。
+ *   memory behavior              看计数（封顶 5）
+ *   memory behavior --days 30    看更久
+ *   memory behavior --prune      清掉 14 天前的行
+ */
+function cmdBehavior() {
+  needDir()
+  if (argv.includes('--prune')) {
+    const r = pruneBehavior(dir)
+    console.log(`✓ 清掉 ${r.before - r.after} 行（保留 ${r.after} 行）`)
+    return
+  }
+  const days = Number(flagValue('--days') || 7)
+  const r = behaviorCounts(dir, { days })
+  if (!r.total) {
+    console.log(`最近 ${days} 天没有可记的行为。`)
+    return
+  }
+  for (const [kind, n] of Object.entries(r.counts).sort((a, b) => b[1] - a[1])) {
+    const raw = r.raw[kind] || n
+    console.log(`- ${kind.padEnd(6)} ${n}${raw > n ? `（原始 ${raw}，封顶 5）` : ''}`)
+  }
 }
 
 // ── were（上次聊到哪儿）────────────────────────────────────────
@@ -1435,6 +1495,15 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'emotion':
+    cmdEmotion('show', [])
+    break
+  case 'feel':
+    cmdEmotion('feel', params)
+    break
+  case 'behavior':
+    cmdBehavior()
     break
   case 'were':
     cmdWere()
