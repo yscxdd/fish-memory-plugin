@@ -62,3 +62,13 @@
 ## 遗忘层（v0.29 候选）
 
 设计与清单在 [PLAN-2026-11-02-forgetting-layer.md](./PLAN-2026-11-02-forgetting-layer.md)：第一轮快（进 31_dormant/）→ 被提起则复活（S×1.6）→ 第二轮正常参数删除（留墓碑）。**待拍板**：ghosts 留不留、删除留不留残片、复活上限、第一轮 45 天快不快。
+
+## 从 digital-life-core 借的两条纪律（不做，先记着）
+
+来源：[mashangshui/digital-life-core](https://github.com/mashangshui/digital-life-core)（TypeScript，**无 LICENSE**，只看思路不抄代码）。
+
+| 项 | 内容 | 为什么现在不做 |
+|---|---|---|
+| 器官 ABI 三约束 | C1 只能 `feedback()` 提议、宿主统一 clamp 后一次性应用；C2 器官为感知付配额、可被拒（full/partial/starved）；C3 错误不传播（降级不崩） | 我们现在各模块自己 save，没有"Δ 收集后一次性应用"；等开放第三方扩展时才需要 |
+| shadow → additive 迁移 | 新机制先"只记账不真扣"跑一周，看遥测，再翻真扣 | 这正是 v0.36 习惯初始 0.45 的做法，值得固化成流程 |
+

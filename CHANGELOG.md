@@ -1,4 +1,4 @@
-# 变更年表 · 2026-10-30/31 · v0.5.8 → v0.40.0
+# 变更年表 · 2026-10-30/31 · v0.5.8 → v0.41.0
 
 > 这份是给"回看"用的：哪一版改了什么、为什么改、动了哪条不变量、当时有多少测试。
 > 交接看 `HANDOFF-2026-10-30.md`；契约细节看 `大肥鱼-插件接口契约-v1.0.md`。
@@ -59,9 +59,10 @@
 | v0.38.0 | **温度档 + 自挂情绪 + 行为账本** | 503 | 情绪默认开 · tier 0–6 一次一档/30 分钟冻结 · `memory feel` · `50_log/behavior.jsonl` |
 | v0.39.0 | **最小睡眠 + 统一结算** | 510 | 夜里静默 ≥4h 算睡过；醒来 tier→3、情绪散掉；settle() 懒结算 + 可选定时器 |
 | v0.40.0 | **时间轴 + 实体表** | 524 | alid_from + [过去]/[计划] 标记 + 问过去偏过去 · 实体登记 → 提到名字就并候选 |
+| v0.41.0 | **篡改告警 + 注意力加权** | 537 | 每轮核心层指纹 → 50_log/tamper.log · 有压力时危机×3/日常×0.1 |
 
 **当前规模**：102 个文件（`lib` 44 · `scripts` 12 · `test` 47 · `skills` 1 · `docs` 9 · `samples` 1）。
-测试 97 → 524（**+427**）。
+测试 97 → 537（**+440**）。
 
 ---
 
@@ -1095,6 +1096,45 @@ memory timeline
 mem0 的自动抽取/合并、向量检索，仍然不抄（C5/C6/C1）。
 
 - 测试 510 → 524（7 条时间轴 + 7 条实体表）
+
+### v0.41.0 · 篡改告警 + 注意力加权（537 测试）
+
+读了 [mashangshui/digital-life-core](https://github.com/mashangshui/digital-life-core)（TypeScript · 142★ · 109 文件 · v1.0.3）。
+**注意：它没有 LICENSE**，按我们的红线只能看思路、不能抄代码。
+
+**① 核心层篡改告警（补我们唯一的红队洞）**
+
+他们有 l0-file-guard.ts（19.5KB），在 pre-tool hook 里**当场拦**写核心文件的命令。
+我们（DSH 插件）只有 	ools.register，**拦不住**她跑 shell —— 所以只能做诚实的另一半：**发现**。
+
+`
+每轮（≥1 秒一次）：扫 00_core 的 soul/user/relation/rules/voice/voice_origin
+                   取 size + mtime + sha8，和基线比
+变了 → logger.warn + 写 50_log/tamper.log
+我们自己的合法写入（soul apply / voice accept）之后 refresh 基线，避免误报
+`
+
+实测：改一行 soul.md → changed: ['soul.md']，日志 {"at":"...","changed":["soul.md"]}。
+memory tamper 看最近 5 次；--reset 把当前当新基线。
+
+**为什么值得做**：我们所有"档案只追加、锁定区逐字不改"的不变式，**只在插件代码路径上成立**。
+她直接 Set-Content 00_core/soul.md 就绕过去了——以前只有手动 erify 才能发现。
+
+**② 注意力加权（危机 ×3、日常 ×0.1）**
+
+他们的 memory-affinity.ts：按皮质醇分 crisis | daily | neutral，危机 ×3、日常 ×0.1。
+我们的问题：**情绪层和检索是两条平行线**——她压力大时，检索不会偏向"危机"那类事。
+
+现在：weight = memoryWeight × 时间权重 × attentionMultiplier。
+只有她在压力中（	ier ≤2 或他 alence ≤ -0.5）才加权；平静时全部 1。
+分类靠标签/簇的正则，零依赖；**只乘分数不过滤**（×0.1 的点仍能被搜到）。
+
+踩到一个坑：Number(null) === 0，isStressed({tier:3}) 最初返回 true（把"没给"当成档位 0）——测试抓住了。
+
+**没抄的**：让 AI 自己写器官（write_new_organ + 26.9KB 自举 prompt）、常驻 WebUI、11 项激素经济。
+他们的 C1/C2/C3 器官约束与 shadow→additive 迁移写进了 BACKLOG（现在不做）。
+
+- 测试 524 → 537（7 条篡改 + 6 条注意力）
 
 
 ---

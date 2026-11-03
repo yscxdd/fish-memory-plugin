@@ -55,6 +55,7 @@ import { behaviorCounts, pruneBehavior } from '../lib/behavior.js'
 import { detectSleep, loadSleep, settle } from '../lib/sleep.js'
 import { addEntity, loadEntityIndex, loadEntityRegistry, rebuildEntityIndex } from '../lib/entities.js'
 import { timeLabel, timelineCounts, timelineRows } from '../lib/time.js'
+import { recentTamper, refreshFingerprint } from '../lib/tamper.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -597,6 +598,32 @@ function cmdVault() {
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
 }
 
+// ── tamper（核心层篡改告警）────────────────────────────────────
+/**
+ * v0.41.0：她要是绕过插件直接改了 soul/voice/档案，这里能看到。
+ *   memory tamper            看有没有可疑改动（只读）
+ *   memory tamper --reset    把当前内容当新基线（我们合法改完之后用）
+ */
+function cmdTamper() {
+  needDir()
+  if (argv.includes('--reset')) {
+    refreshFingerprint(dir)
+    console.log('✓ 已把当前核心层当新基线')
+    return
+  }
+  const rows = recentTamper(dir, 5)
+  if (!rows.length) {
+    console.log('没有篡改告警。')
+    return
+  }
+  console.log(`最近 ${rows.length} 次核心层改动：`)
+  for (const r of rows) {
+    const files = [...(r.changed || []), ...(r.added || []), ...(r.removed || [])]
+    console.log(`  ${String(r.at).slice(0, 16).replace('T', ' ')}  ${files.join(' / ')}`)
+  }
+  console.log('  如果这些是你自己改的，跑 memory tamper --reset')
+}
+
 // ── entity（实体表）────────────────────────────────────────────
 /**
  * v0.40.0：登记表人写，索引派生。
@@ -1078,6 +1105,11 @@ function cmdSoul(sub, arg) {
     }
     console.log(`✓ 已应用：soul.md → v${r.version}（旧版 ${r.snapshot}，改动 ${(r.drift * 100).toFixed(1)}%）`)
     for (const w of r.warnings || []) console.log(`  ⚠ ${w}`)
+    try {
+      refreshFingerprint(dir)
+    } catch {
+      /* 刷新失败不影响结果 */
+    }
     console.log(`  changelog 已记一行；7 天内已用 ${changes7d(dir)}/2`)
     return
   }
@@ -1585,6 +1617,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'tamper':
+    cmdTamper()
     break
   case 'entity':
     cmdEntity(params[0], params.slice(1))
