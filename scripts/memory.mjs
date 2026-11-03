@@ -58,7 +58,7 @@ import { timeLabel, timelineCounts, timelineRows } from '../lib/time.js'
 import { recentTamper, refreshFingerprint } from '../lib/tamper.js'
 import { addWorkspace, buildFileIndex, indexStats, listAll, readIndexedFile, removeWorkspace, searchFiles } from '../lib/workspaces.js'
 import { everythingStatus, findWithEverything, saveConfig } from '../lib/everything.js'
-import { renderRecall, searchArchive } from '../lib/recall.js'
+import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
 import { verifyPackage } from '../lib/verify.js'
@@ -673,8 +673,37 @@ function cmdWs(sub, arg) {
 
 function cmdFind(q) {
   needDir()
-  if (!q) fail('用法：memory find <关键词> [--local]')
+  if (!q) fail('用法：memory find <关键词> [--local] [--in memory|all]')
   const localOnly = argv.includes('--local')
+  const inIdx = argv.indexOf('--in')
+  const scope = inIdx >= 0 ? String(argv[inIdx + 1] || 'files') : 'files'
+
+  // v0.44.0：--in memory 直接翻档案与记忆点（名字找不到时，"他提过什么"还能捞出来）
+  if (scope === 'memory' || scope === 'all') {
+    if (scope === 'all') {
+      console.log('文件：')
+      findFiles(q, localOnly)
+    }
+    const pts = searchPoints(dir, q, { limit: 10 })
+    const arch = searchArchive(dir, q, { limit: 8 })
+    if (pts.length) {
+      console.log(`记忆点 ${pts.length} 条：`)
+      for (const p of pts) console.log(`- [${p.kind}] ${p.date} ${p.title}  ${p.id}\n    ${p.excerpt}`)
+    }
+    if (arch.length) {
+      console.log(`原话 ${arch.length} 条：`)
+      for (const a of arch) console.log(`- ${a.role === 'user' ? '他' : '她'} ${String(a.ts).slice(0, 16).replace('T', ' ')}  ${a.id}\n    ${a.excerpt}`)
+    }
+    if (!pts.length && !arch.length) console.log(`档案和记忆点里都没有「${q}」。`)
+    logFind({ q, mode: 'memory', hits: pts.length + arch.length, dropped: 0 })
+    return
+  }
+
+  findFiles(q, localOnly)
+}
+
+/** 文件查找（Everything → 本地索引 → 都没有） */
+function findFiles(q, localOnly) {
 
   // v0.43.0：先问 Everything（全盘、毫秒级），但**结果必须过滤到登记工作区**
   if (!localOnly) {
