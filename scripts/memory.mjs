@@ -56,6 +56,7 @@ import { detectSleep, loadSleep, settle } from '../lib/sleep.js'
 import { addEntity, loadEntityIndex, loadEntityRegistry, rebuildEntityIndex } from '../lib/entities.js'
 import { timeLabel, timelineCounts, timelineRows } from '../lib/time.js'
 import { recentTamper, refreshFingerprint } from '../lib/tamper.js'
+import { addWorkspace, buildFileIndex, indexStats, listAll, readIndexedFile, removeWorkspace, searchFiles } from '../lib/workspaces.js'
 import { renderRecall, searchArchive } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -596,6 +597,73 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── ws / find / read（工作区文件索引）──────────────────────────
+/**
+ * v0.42.0：只索引名字，读文件是另一条显式的路（三道闸）。
+ *   memory ws add <目录>     登记一个目录（绝对路径）
+ *   memory ws list           看登记与索引概况
+ *   memory ws remove <目录>
+ *   memory ws rebuild        重建索引
+ *   memory find <关键词>      按名字/路径找
+ *   memory read <路径>        读文本文件（仅登记目录内、≤512KB、文本类）
+ */
+function cmdWs(sub, arg) {
+  needDir()
+  if (sub === 'add') {
+    if (!arg) fail('用法：memory ws add <绝对路径>')
+    const r = addWorkspace(dir, arg)
+    if (!r.ok) fail(r.reason)
+    console.log(`✓ 已登记：${r.path}（共 ${r.count} 个）`)
+    const b = buildFileIndex(dir)
+    console.log(`  索引：${b.count} 个文件${b.truncated ? '（已截断，目录太大）' : ''}`)
+    return
+  }
+  if (sub === 'remove') {
+    if (!arg) fail('用法：memory ws remove <绝对路径>')
+    const r = removeWorkspace(dir, arg)
+    if (!r.ok) fail('没找到这个登记')
+    console.log(`✓ 已移除（剩 ${r.count} 个）`)
+    return
+  }
+  if (sub === 'rebuild') {
+    const b = buildFileIndex(dir)
+    console.log(`✓ 索引 ${b.count} 个文件 · ${b.roots} 个目录 · ${b.ms}ms${b.truncated ? ' · 已截断' : ''}`)
+    return
+  }
+  const rows = listAll(dir)
+  if (!rows.length) {
+    console.log('还没有登记目录。用 memory ws add <绝对路径> 加一个。')
+    return
+  }
+  const st = indexStats(dir)
+  for (const r of rows) console.log(`- ${r.path}  ${r.files} 个文件${r.exists ? '' : '（目录不在了）'}`)
+  console.log(`索引：${st.count} 个文件 · ${st.at ? String(st.at).slice(0, 16).replace('T', ' ') : '未建'}${st.truncated ? ' · 已截断' : ''}`)
+}
+
+function cmdFind(q) {
+  needDir()
+  if (!q) fail('用法：memory find <关键词>')
+  const r = searchFiles(dir, q, { limit: 20 })
+  if (!r.hits.length) {
+    console.log(`没找到「${q}」。${r.built ? '（刚建了索引）' : ''}`)
+    return
+  }
+  for (const h of r.hits) {
+    const kb = Math.round(h.s / 1024)
+    console.log(`- ${h.n}  ${kb}KB  ${h.p}`)
+  }
+  console.log(`共 ${r.total} 条${r.built ? ' · 刚建了索引' : ''}`)
+}
+
+function cmdRead(p) {
+  needDir()
+  if (!p) fail('用法：memory read <路径>')
+  const r = readIndexedFile(dir, p)
+  if (!r.ok) fail(r.reason)
+  console.log(r.text)
+  console.log(`\n（${r.path} · ${Math.round(r.bytes / 1024)}KB）`)
 }
 
 // ── tamper（核心层篡改告警）────────────────────────────────────
@@ -1617,6 +1685,15 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'ws':
+    cmdWs(params[0], params[1])
+    break
+  case 'find':
+    cmdFind(params[0])
+    break
+  case 'read':
+    cmdRead(params[0])
     break
   case 'tamper':
     cmdTamper()
