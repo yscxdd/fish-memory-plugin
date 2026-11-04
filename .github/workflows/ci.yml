@@ -46,3 +46,7 @@ jobs:
       # 自审：项目自己的安全规矩（静态、离线、只读）
       - name: self audit
         run: npm run audit
+
+      # 规模数字：CHANGELOG 里的「当前规模」必须和磁盘一致（v0.46.1 起不再手写）
+      - name: scale numbers
+        run: node scripts/scale.mjs --check

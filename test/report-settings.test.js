@@ -21,6 +21,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, readdi
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { normalizeConfig, runtimeDefaults } from '../lib/config.js'
 import {
   TUNABLES,
   applyOverrides,
@@ -154,4 +155,20 @@ test('某块数据缺失时整页仍能生成（该块显示无数据）', () =>
   const html = readFileSync(r.path, 'utf8')
   assert.match(html, /来源 20_state\/emotion\.json · 无数据/)
   assert.match(html, /插件没在跑/, '没有 boot.json 时顶部应说没在跑')
+})
+test('默认值单源：TUNABLES 的 default 必须等于运行时默认（v0.46.1 修的读数失真）', () => {
+  const rt = runtimeDefaults()
+  for (const spec of TUNABLES) {
+    const parts = spec.key.split('.')
+    if (parts[0] !== 'emotion') continue // 目前只有情绪组在 runtimeDefaults 里
+    const real = rt.emotion[parts[1]]
+    assert.equal(spec.default, real, `${spec.key} 显示 ${spec.default}，运行时是 ${real}`)
+  }
+})
+
+test('情绪默认开（v0.38 的决策，v0.46.1 才真正落到运行时）', () => {
+  const cfg = normalizeConfig({})
+  const emo = { ...runtimeDefaults().emotion, ...(cfg.emotion || {}) }
+  assert.equal(emo.enabled, true, '配置里没写时必须开')
+  assert.equal(normalizeConfig({ emotion: { enabled: false } }).emotion.enabled, false, '显式关要能关掉')
 })
