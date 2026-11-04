@@ -21,8 +21,14 @@ import { parseTimeRange, queryIntent } from '../lib/time.js'
 /**
  * @param {{now?:Date, threshold?:number, limit?:number}} [opts]
  */
-export function runHard({ now = new Date(), threshold = 0.5, limit = 3 } = {}) {
-  const { points, queries } = buildHardSet(now)
+export function runHard({ now = new Date(), threshold = 0.5, limit = 3, aliases = null } = {}) {
+  const base = buildHardSet(now)
+  const queries = base.queries
+  // v0.50.1：给指定的点临时加上别名，用来量"别名到底救不救得回来"
+  // （和 store 一样：别名并进 tags 一起算分，见 retrieve.js:224）
+  const points = aliases
+    ? base.points.map((p) => (aliases[p.id]?.length ? { ...p, aliases: [...(p.aliases || []), ...aliases[p.id]] } : p))
+    : base.points
   const rows = []
   let hit = 0
   let near = 0
