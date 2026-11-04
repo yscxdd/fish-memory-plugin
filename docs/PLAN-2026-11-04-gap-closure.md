@@ -225,12 +225,13 @@ CHANGELOG 写「102 个文件（lib 44 · test 47 · docs 9）」，实测 **180
 
 | 版本 | 内容 | 新增测试 | 闸门 | 预计改动面 |
 |---|---|---|---|---|
-| v0.46.1 | P0-0 默认值单源 + 显示修正（§5.1） | ≥3 | 全闸门 | `settings.js`、`config.js`、`memory.mjs`（打印） |
-| v0.47.0 | P0-1 待审队列 + 提醒 | ≥8 | test / verify / hostcheck / gold / audit / selfcheck | `lib/pending.js`（新）、`render.assemble`、`index.js`、`memory.mjs` |
-| v0.48.0 | P0-2 别名半自动 | ≥10 | 同上 + gold 加 3 条同义查询 | `lib/alias.js`（新）、`memory.mjs`、`samples/` |
-| v0.49.0 | P0-3 回放 + bench 进 CI | ≥6 | CI 多两步 | `scripts/eval-replay.mjs`（新）、`ci.yml`、`samples/replay/` |
-| v0.50.0 | P1-1 冷归档 + P1-2 跨进程锁 | ≥10 | 同上 | `lib/archive.js`、`lib/integrity.js`、`memory.mjs` |
-| v0.50.x | P1-3~6 + 文档自净 | ≥8 | 同上 | `assets.js`、`emotion` 相关、`privacy.js`、文档 |
+| ~~v0.46.1~~ | P0-0 默认值单源 + 显示修正（§5.1）——**2026-11-04 已落地** | ≥3 | 全闸门 | `settings.js`、`config.js`、`memory.mjs`（打印） |
+| ~~v0.47.0~~ | **已被「套话计数」占用**（用户直接需求，见 CHANGELOG v0.47.0），下表顺延一个版本 | — | — | `lib/cliche.js`、`voice.js`、`scaffold.js` |
+| v0.48.0 | P0-1 待审队列 + 提醒 | ≥8 | test / verify / hostcheck / gold / audit / selfcheck | `lib/pending.js`（新）、`render.assemble`、`index.js`、`memory.mjs` |
+| v0.49.0 | P0-2 别名半自动 | ≥10 | 同上 + gold 加 3 条同义查询 | `lib/alias.js`（新）、`memory.mjs`、`samples/` |
+| v0.50.0 | P0-3 回放 + bench 进 CI | ≥6 | CI 多两步 | `scripts/eval-replay.mjs`（新）、`ci.yml`、`samples/replay/` |
+| v0.51.0 | P1-1 冷归档 + P1-2 跨进程锁 | ≥10 | 同上 | `lib/archive.js`、`lib/integrity.js`、`memory.mjs` |
+| v0.51.x | P1-3~6 + 文档自净 | ≥8 | 同上 | `assets.js`、`emotion` 相关、`privacy.js`、文档 |
 
 **如果只有一天：先做 P0-0（1 小时，让读数变真），再做 P0-1 的最小版（`memory pending` 列表 + 注入一行）。** 待审队列不提升任何能力，但它是唯一能把"库是空的"变成"库有东西"的改动——没有它，后面每一条都还是在猜。
 

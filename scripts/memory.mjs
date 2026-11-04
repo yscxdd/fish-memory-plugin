@@ -23,6 +23,7 @@
  *   asset add <文件> [--kind book|doc|transcript|image|audio|video] [--title 名字]   素材放库外，库里只留引用`n *   book add <文件> [--title 书名]｜book list｜book verify   书源：原文在库外，库里只留引用
  *   wakeup [--out <目录>] [--json]  生成唤醒包（五件，目标 ≤4000 tok）→ 90_snapshot/wakeup-YYYYMMDD/
  *   tokens [--days N] [--json]      每轮注入 token 的账（50_log/token.log）
+ *   cliche [--days 7] [--json]      套话密度（只读）：多少轮带着"我记下了/这句稳"这类腔调
  *   reset --all [--yes]  开养前清零：档案/状态/日志/快照/技能/草稿（00_core 与文档不动）
  *
  * flags：--dir <path>  --json  --check  --write  --force  --out <dir>
@@ -49,6 +50,7 @@ import { HOST_POINTS } from '../lib/host.js'
 import { packMemory, unpackMemory } from '../lib/pack.js'
 import { RETURN_GAP_HOURS, loadPresence, presenceSummary, returnLine } from '../lib/presence.js'
 import { addHabit, habitsBlock, habitsSummary } from '../lib/habits.js'
+import { clicheReport, findCliches, pruneClicheLog } from '../lib/cliche.js'
 import { readWere, writeWere } from '../lib/were.js'
 import { addSpecial, emotionLine, emptyState, loadEmotion, saveEmotion, specialsLine, TIER_DEFAULT, TIER_TEXT } from '../lib/emotion.js'
 import { behaviorCounts, pruneBehavior } from '../lib/behavior.js'
@@ -1032,8 +1034,47 @@ function cmdHabit(sub, arg) {
   fail('用法：memory habit <list|add|block> ...')
 }
 
-// ── presence（在场记录 / 回来第一句）────────────────────────────
-/** v0.35.0：看"他上次在场是多久前"。回来第一句就是靠这个算的。 */
+// ── cliche（套话密度）──────────────────────────────────────────
+/**
+ * v0.46.1：只读地数"多少轮带着套话"。
+ *
+ *   memory cliche [--days 7] [--json]   看密度与分布
+ *   memory cliche test "我记下了"        看一句话命中哪几族（调试短语表用）
+ *
+ * 刻意不做的事：不注入提醒、不改写、不扣权重。
+ * 提醒本身会变成新的腔调；"别说 X"还会把 X 喂到眼前。
+ * 管住她的是 `00_core/rules.md` 的「说话」三条，这里只量它有没有用。
+ */
+function cmdCliche(sub, args) {
+  needDir()
+  if (sub === 'test') {
+    const text = args.join(' ')
+    if (!text) fail('用法：memory cliche test "一句话"')
+    const hit = findCliches(text)
+    console.log(hit.count ? `命中：${hit.labels.join(' / ')}（${hit.matches.join('、')}）` : '没有命中')
+    return
+  }
+  const days = Number(flagValue('--days') || 7)
+  const r = clicheReport(dir, { days })
+  if (argv.includes('--json')) {
+    console.log(JSON.stringify(r, null, 2))
+    return
+  }
+  if (!r.totalTurns && !r.hitTurns) {
+    console.log(`近 ${days} 天没有可算的样本（档案里还没有她的终稿，或插件低于 0.46.1）。`)
+    return
+  }
+  const pct = Math.round(r.rate * 100)
+  console.log(`近 ${days} 天：她回了 ${r.totalTurns} 轮，${r.hitTurns} 轮带套话（${pct}%）`)
+  if (r.ranked.length) {
+    console.log(`  ${r.ranked.map((x) => `${x.label} ${x.n}`).join(' · ')}`)
+    console.log(`最常见：${r.top.label}（${r.top.n} 轮）`)
+  }
+  console.log('\n这个数字只用来对照 `00_core/rules.md` 的「说话」三条；不注入、不拦截、不改权重。')
+  pruneClicheLog(dir)
+}
+
+// ── presence（在场记录 / 回来第一句）────────────────────────────/** v0.35.0：看"他上次在场是多久前"。回来第一句就是靠这个算的。 */
 function cmdPresence() {
   needDir()
   console.log(presenceSummary(dir))
@@ -1874,6 +1915,9 @@ switch (command || 'help') {
     break
   case 'habit':
     cmdHabit(params[0], params[1])
+    break
+  case 'cliche':
+    cmdCliche(params[0], params.slice(1))
     break
   case 'presence':
     cmdPresence()
