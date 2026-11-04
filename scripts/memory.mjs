@@ -66,6 +66,7 @@ import { addWorkspace, buildFileIndex, indexStats, listAll, readIndexedFile, rem
 import { everythingStatus, findWithEverything, saveConfig } from '../lib/everything.js'
 import { TUNABLES, effectiveValue, resetSetting, setSetting } from '../lib/settings.js'
 import { writeReport } from '../lib/report.js'
+import { mergeCheck } from '../lib/mergecheck.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -606,6 +607,48 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── merge-check（只读：两个库差在哪）──────────────────────────
+/**
+ * v0.51.0：**不做双向同步**，只告诉你两个库差在哪、有没有结构性冲突。
+ *   memory merge-check <另一个库的路径> [--json]
+ */
+function cmdMergeCheck(other) {
+  needDir()
+  if (!other) fail('用法：memory merge-check <另一个库的路径>')
+  const r = mergeCheck(dir, resolve(other))
+  if (flags.has('--json')) {
+    console.log(JSON.stringify(r, null, 2))
+    process.exit(r.dangers.length ? 1 : 0)
+  }
+  const fmt = (n) => (n == null ? '—' : String(n))
+  console.log(`A（本机）：${r.a}`)
+  console.log(`B（另一台）：${r.b}`)
+  console.log('')
+  console.log(`档案：A ${r.archive.a.messages} 条 / B ${r.archive.b.messages} 条`)
+  console.log(`  只在 A：${r.archive.onlyA}${r.archive.sampleOnlyA.length ? '（如 ' + r.archive.sampleOnlyA.join('、') + '）' : ''}`)
+  console.log(`  只在 B：${r.archive.onlyB}${r.archive.sampleOnlyB.length ? '（如 ' + r.archive.sampleOnlyB.join('、') + '）' : ''}`)
+  console.log(`  同 id 内容不同：${r.archive.differ}`)
+  console.log(`  两边都改过的天文件（链已分叉）：${r.archive.forks.length}${r.archive.forks.length ? '：' + r.archive.forks.join('、') : ''}`)
+  console.log(`记忆点：A ${r.points.a} / B ${r.points.b} · 冲突 ${r.points.differ} · 只在 A ${r.points.onlyA} · 只在 B ${r.points.onlyB}`)
+  if (r.core.differ.length) console.log(`核心层两边都改过：${r.core.differ.join('、')}`)
+  console.log(`谁的档案更新：${r.newer === 'A' ? 'A（本机）' : r.newer === 'B' ? 'B（另一台）' : r.newer === 'same' ? '一样' : '无法判断'}`)
+  const st = r.state.filter((x) => x.a || x.b)
+  if (st.length) {
+    console.log('')
+    console.log('状态文件（左 A / 右 B）：')
+    for (const x of st) console.log(`  ${x.file.padEnd(18)} ${fmt(x.a)}  ${fmt(x.b)}`)
+  }
+  console.log('')
+  if (r.dangers.length) {
+    console.log('⚠ 有结构性冲突：')
+    for (const d of r.dangers) console.log('  · ' + d)
+  } else {
+    console.log('✓ 没有结构性冲突')
+  }
+  console.log('  ' + r.advice)
+  process.exit(r.dangers.length ? 1 : 0)
 }
 
 // ── report（静态状态报告）──────────────────────────────────────
@@ -2026,6 +2069,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'merge-check':
+    cmdMergeCheck(params[0])
     break
   case 'report':
     cmdReport()
