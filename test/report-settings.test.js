@@ -30,7 +30,7 @@ import {
   resetSetting,
   setSetting,
 } from '../lib/settings.js'
-import { collectReport, renderReport, writeReport } from '../lib/report.js'
+import { collectReport, freshness, renderReport, runtimeInfo, writeReport } from '../lib/report.js'
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'fishmem-cfg-'))
@@ -119,4 +119,39 @@ test('报告：空库也能生成（不因为没数据就报错）', () => {
   assert.equal(data.counts.points, 0)
   const html = renderReport(data)
   assert.match(html, /还没开始被养|还没有记忆点/)
+})
+test('新鲜度：有文件给分钟数，没文件给 exists:false', () => {
+  const dir = fixture()
+  const now = new Date()
+  const f1 = freshness(dir, '00_core/soul.md', now)
+  assert.equal(f1.exists, true)
+  assert.equal(typeof f1.ageMin, 'number')
+  const f2 = freshness(dir, '20_state/不存在.json', now)
+  assert.deepEqual(f2, { exists: false, ageMin: null, at: null })
+})
+
+test('运行时三态：没有 boot.json 就是没在跑', () => {
+  const dir = fixture()
+  const rt = runtimeInfo(dir)
+  assert.equal(rt.running, false)
+  assert.equal(rt.match, false)
+})
+
+test('运行时三态：boot 在 + host.log 记了同一版 → 在跑且一致', () => {
+  const dir = fixture()
+  writeFileSync(join(dir, '20_state/boot.json'), JSON.stringify({ at: '2026-11-04T10:00:00Z', pid: 1 }), 'utf8')
+  writeFileSync(join(dir, '50_log/host.log'), JSON.stringify({ at: '2026-11-04T10:00:00Z', plugin: '0.46.0', lib: 'abc12345' }) + '\n', 'utf8')
+  const rt = runtimeInfo(dir)
+  assert.equal(rt.running, true)
+  assert.equal(rt.plugin, '0.46.0')
+  assert.equal(rt.lib, 'abc12345')
+})
+
+test('某块数据缺失时整页仍能生成（该块显示无数据）', () => {
+  const dir = fixture()
+  // 只删状态文件，不删结构
+  const r = writeReport(dir, { now: new Date('2026-11-04T01:00:00Z') })
+  const html = readFileSync(r.path, 'utf8')
+  assert.match(html, /来源 20_state\/emotion\.json · 无数据/)
+  assert.match(html, /插件没在跑/, '没有 boot.json 时顶部应说没在跑')
 })
