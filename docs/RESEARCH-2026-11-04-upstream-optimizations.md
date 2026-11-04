@@ -18,9 +18,11 @@ Mem0 在 2025 版是 `ADD/UPDATE/DELETE/NOOP` 四操作、矛盾就硬删；2026
 
 而且——分词救不了同义。所以这条判断的落点是**别名**，不是分词（A0 / A1 的顺序就是这么来的）。
 
-**判断三：有一处设计现在是实打实吃亏的，不是取舍问题。**
+**判断三（2026-11-04 修正：原文说错了，保留划线原文以便对照）：** ~~有一处设计现在是实打实吃亏的，不是取舍问题。~~
 
-`lib/index.js:68` 声明 `inject = ['systemPrompt', 'skills', 'tools']`，记忆块进的是 **system prompt**（`ctx.systemPrompt.context({name, order, text})`）；而块内容每轮都在变（body 由 query 决定）。提示缓存是**前缀字节匹配**：system prompt 一变，整段对话的缓存全部作废。缓存读 0.1×、写 1.25×——同一段上下文，命中和不命中差一个数量级。Claude Code 那条经验说得最直白："static content first, dynamic content last"，并且**把更新放进 message，不要改 system prompt**。本地推理不吃这个亏；接云端 API 就是真金白银。见 B6。
+~~`lib/index.js:68` 声明 `inject = ['systemPrompt', 'skills', 'tools']`，记忆块进的是 **system prompt**（`ctx.systemPrompt.context({name, order, text})`）；而块内容每轮都在变（body 由 query 决定）。提示缓存是**前缀字节匹配**：system prompt 一变，整段对话的缓存全部作废。缓存读 0.1×、写 1.25×——同一段上下文，命中和不命中差一个数量级。Claude Code 那条经验说得最直白："static content first, dynamic content last"，并且**把更新放进 message，不要改 system prompt**。本地推理不吃这个亏；接云端 API 就是真金白银。见 B6。~~
+
+实测结论相反：DSH 的 `deepseek-flash` 目录条目声明了 `systemPromptUpdate: in-history`，**改系统提示词是追加到历史尾部，不是重写开头**，前缀继续命中。本机 13 个会话实测命中率 93.6%–99.7%，最长那个 2698 轮是 **99.5%**。记忆块 447 tok，只占每轮提示词（p50 43 万）的 **0.10%**。所以 B6 不做——详见 [RESEARCH-2026-11-04-b6-prompt-cache-evidence.md](./RESEARCH-2026-11-04-b6-prompt-cache-evidence.md) 与下方 B6 段。
 
 ---
 
@@ -142,16 +144,23 @@ Mem0 在 2025 版是 `ADD/UPDATE/DELETE/NOOP` 四操作、矛盾就硬删；2026
 - **代价**：`erase.js` + `source` 索引（现在 `source` 是字符串，得建反向表）。
 - **验收**：三角测试——同一事实由两条消息支持，删一条后点仍在；删第二条后点进墓碑；`verify` 通过。
 
-### B6. 把每轮必变的东西挪出 systemPrompt（或者冻住它）
+### B6. 把每轮必变的东西挪出 systemPrompt —— **❌ 已证伪，不做（2026-11-04）**
 
-- **现状**：`inject = ['systemPrompt', ...]`，一个 `name` 一块，`order` 排序；`assemble()` 每轮返回新文本，所以这个块每轮字节都不同。
-- **依据**：Anthropic 的缓存是"从头开始的前缀匹配"，缓存读 0.1× / 写 1.25×；Claude Code 的教训是"稳定在前、易变在后"，而且**系统提示里的时间戳、顺序不稳的工具定义都会把缓存打掉**。
-- **改法**（按代价从低到高，做到哪步算哪步）：
-  1. **只冻住稳定段**：`core/status/index` 每轮文本通常不变，把"每轮必变"的 `body` 拆成独立 `name` 块并给最大的 `order`——至少让前面的块可复用（宿主若按块拼前缀，这就够了）。
-  2. **会话级冻结**：同一 session 内，检索结果变化 <2 条就不重写块，沿用上一轮文本（记 `<!-- v:N -->` 便于 diff）。代价是"她这一轮看到的是上一轮的检索结果"，对 1700 tok 的小块通常无感。
-  3. **走 message**：若宿主支持往当轮用户消息注入，把 `body` 挪过去，systemPrompt 彻底静态化。这是最优解，但要动 `lib/host.js` 的口子和 `hostcheck`。
-- **代价**：1、2 是 `render.js` + `index.js` 内部改动；3 要等宿主能力确认。
-- **验收**：`toklog` 里记 `systemPrompt` 的哈希（或宿主的 cache 命中字段，有就记）；同一会话连续 5 轮，**块字节不变的轮数 ≥3**；`inject-diff` 证明记忆内容没丢。
+> 详细证据与复现方法：[RESEARCH-2026-11-04-b6-prompt-cache-evidence.md](./RESEARCH-2026-11-04-b6-prompt-cache-evidence.md)
+
+- **原假设**：`inject = ['systemPrompt', ...]`，块每轮字节都不同 → 前缀缓存每轮作废 → 应该把 `body` 拆出来、或冻住、或走 message。
+- **假设错在哪**：DSH 的 `deepseek-flash` 目录条目声明了 `systemPromptUpdate: "in-history"`（`dsh-llm-deepseek/lib/index.js:24`）。`dsh-agent-loop` 的 `project()`（`lib/index.js:272`）在这种情况下**把变化后的整段系统提示追加到历史尾部**，不动开头的系统消息——前缀照样命中。这正是上游（Anthropic 文档 "static first, dynamic last"、arXiv 2601.06007、kelivo #1202、context-chef 的 `before_history_tail`）教人手动做的事，宿主在协议层做了。
+- **实测**（`node scripts/cache-audit.mjs`，只读）：
+  - 13 个本机会话命中率 **93.6%–99.7%**；2698 轮那个是 **99.5%**，零缓存轮 0。
+  - 每轮提示词 p50 **432,444** tok；每轮未命中输入 p50 **248** tok。
+  - 记忆注入块 **447** tok = 每轮提示词的 **0.10%**。
+  - B6 第一步的"连续 5 轮里块字节不变"：真实库 76 个窗口**全是 4/4**；换成有 3 个点的库跑 80 条真实提问，body 只命中 2 轮。
+- **为什么不做**：447 tok 全价 ≈ ¥0.00045/轮，全命中 ≈ ¥0.00001/轮，差额 **≈ ¥4 / 万轮**——上限比改动成本（拆块 + 宿主口子 + 测试 + 全闸门）低两个数量级。真正贵的是 43 万 token 的上下文本身，不是这 0.1%。
+- **什么情况下回头做**（写死，别凭感觉）：
+  1. 库填满后连续 100 轮真实会话，命中率**跌破 90%**，且 `system/message` 事件数接近轮次数（说明块真在每轮变）；
+  2. 换到**没有** `systemPromptUpdate: in-history` 的模型/供应商（缺省即 `leading-only`）；
+  3. 宿主改成"一个 name 一块、按 order 拼前缀"，块边界才重新有意义。
+- **唯一未闭合的缺口**：本机没有"库已填满 + 块每轮变"的会话，所以"变了也不掉"是从机制推的、不是直接观测的。等 P0-1 把库填起来，顺手跑一次 `cache-audit` 就能闭合，成本为零。
 
 ---
 
@@ -216,7 +225,7 @@ Mem0 在 2025 版是 `ADD/UPDATE/DELETE/NOOP` 四操作、矛盾就硬删；2026
 | **v0.49.0** | A3 相对时间 + B1 实体扩散 | LongMemEval temporal；HippoRAG 2 | `time.js`、`entities.js`、`retrieve.js` | 时序 4 条、关联 6 中 4 |
 | **v0.50.0** | B4 信任分级 + 复检 + B5 删除级联 | OWASP ASI06；Graphiti remove_episode | `schema`、`audit`、`erase` | 5 条新测试 + 587 不回归 |
 | **v0.51.0** | C1/C2/C3 评估三件 | LongMemEval、MemoryAgentBench、PersonaMem v2、ANCHOR、REMP | `scripts/eval-*.mjs`、`ci.yml` | 分项数字进 docs，CI 有门槛 |
-| v0.52+ | B2 演化、B3 摘要树、B6 缓存前缀、C4 MCP、C5 工程债 | A-MEM；Graphiti communities；Anthropic 缓存；basic-memory | — | — |
+| v0.52+ | B2 演化、B3 摘要树、~~B6 缓存前缀~~（已证伪，见 B6）、C4 MCP、C5 工程债 | A-MEM；Graphiti communities；basic-memory | — | — |
 
 **如果只做一件：A0。** 它是我在这份清单里唯一实测到"从 0.00 变成能命中"的动作（v0.48.0 已实现，`test/alias.test.js` 的端到端用例钉住：`关节不舒服` 本来 0 命中，写回别名后命中）。
 

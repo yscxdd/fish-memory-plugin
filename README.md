@@ -1,4 +1,4 @@
-# fish-memory-plugin v0.49.0
+# fish-memory-plugin v0.49.1
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
 ![tests](https://img.shields.io/badge/tests-618%20passing-brightgreen)
@@ -466,6 +466,7 @@ A/B 结果（同一份金标，只换权重）：
 |---|---|---|
 | 字符二元组 + BM25 的 IDF 式 `ln(1+(N-df+0.5)/(df+0.5))` | [零依赖 JS 中文 BM25](https://bbs.huaweicloud.com/blogs/495939) | 实现成 `lib/idf.js`，**金标零增益**（19/20 → 同一个 19/20、同一边际），**所以默认关** |
 | 混排/RRF：多路排序再融合 | [memor-cli 用 RRF 合并两路排序](https://pypi.org/project/memor-cli/0.13.0/) | **量过了，不做**：加词级通道后金标仍是 20/20（现行打分器已 20/20），误命中 7→9。见 `docs/RESEARCH-2026-11-04` §A1 |
+| 把易变记忆块挪出 systemPrompt（稳前缀省缓存） | [Anthropic 提示缓存](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)、[arXiv 2601.06007](https://arxiv.org/abs/2601.06007) | **证伪，不做**：DSH 的 `deepseek-flash` 声明 `systemPromptUpdate: in-history`，改提示词是**追加到历史尾部**，前缀照样命中；实测 13 个会话 93.6%–99.7%，记忆块只占每轮提示词的 0.10%。见 `docs/RESEARCH-2026-11-04-b6-prompt-cache-evidence.md` |
 | 记忆条目之间的显式链接（Zettelkasten 式） | [A-MEM](https://scixplorer.org/abs/2025arXiv250212110X/abstract) | 已有：`links` 一跳展开（§注入顺序第 8 条），**不重复造** |
 | 时间有效边 / 旧事实失效 | [Graphiti（双时间轴）](https://help.getzep.com/facts.md) | 部分：`contradicts` + `merged` + `superseded`。完整双时间轴要改档案格式，**留着** |
 | 记忆抽取时的 ADD/UPDATE/DELETE 去重 | [mem0](https://newreleases.io/project/github/mem0ai/mem0/release/ts-v3.0.0) | 靠 `check`/`audit` 的 source + 逐字校验 + `merged_into`，没有自动去重；**下一步候选** |
