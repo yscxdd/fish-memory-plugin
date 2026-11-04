@@ -47,6 +47,10 @@ jobs:
       - name: self audit
         run: npm run audit
 
+      # 难题组：会输的尺子（v0.50.0）。当前 70%，退回 50% 以下直接失败
+      - name: hard gold set
+        run: node scripts/memory.mjs gold --set hard --floor 0.5
+
       # 规模数字：CHANGELOG 里的「当前规模」必须和磁盘一致（v0.46.1 起不再手写）
       - name: scale numbers
         run: node scripts/scale.mjs --check

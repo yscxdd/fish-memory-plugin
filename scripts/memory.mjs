@@ -48,6 +48,7 @@ import { buildSelfPack, latestSelf, promoteSelf, selfDraftPath, SELF_MAX_CHARS }
 import { privacyReport, writeGitignoreBlock } from '../lib/privacy.js'
 import { abGold, GOLD_FLOOR, runGold, WEIGHT_SETS } from '../lib/goldset.js'
 import { goldStability } from './gold-stability.mjs'
+import { runHard } from './gold-hard.mjs'
 import { checkHost } from '../lib/hostcheck.js'
 import { HOST_POINTS } from '../lib/host.js'
 import { packMemory, unpackMemory } from '../lib/pack.js'
@@ -1734,6 +1735,31 @@ function cmdGold() {
   const threshold = rawThreshold === undefined ? 0.8 : Number(rawThreshold)
   if (!Number.isFinite(threshold) || threshold < 0 || threshold > 20) {
     fail('--threshold 要是 0..20 的数字（默认 0.8）')
+  }
+
+  // v0.50.0（C1 小步）：难题组——一把会输的尺子
+  if (flagValue('--set') === 'hard') {
+    const r = runHard({ threshold: Number(flagValue('--threshold') || 0.5) })
+    const floor = flagValue('--floor') === undefined ? null : Number(flagValue('--floor'))
+    if (flags.has('--json')) {
+      console.log(JSON.stringify(r, null, 2))
+      if (floor != null && r.rate < floor) process.exit(1)
+      return
+    }
+    console.log(`难题组：${r.hit}/${r.total} top-1（${Math.round(r.rate * 100)}%）· 近 3 ${r.near} · 未进 ${r.miss} · 命中错条 ${r.bad}`)
+    for (const [cat, c] of Object.entries(r.byCategory)) {
+      console.log(`  ${cat}：${c.hit}/${c.total} top-1` + (c.bad ? ` · 错条 ${c.bad}` : '') + (c.near ? ` · 近 3 ${c.near}` : ''))
+    }
+    console.log('')
+    for (const row of r.rows) {
+      const mark = row.verdict === 'hit' ? '✓' : row.verdict === 'near' ? '~' : row.verdict === 'bad' ? '✗错条' : '✗'
+      console.log(`  ${mark.padEnd(4)} ${row.query} → ${row.got ?? '空'}（期望 ${row.expect}）` + (row.range ? ` · 窗 ${row.range}` : ''))
+    }
+    if (floor != null) {
+      if (r.rate < floor) fail(`难题组低于下限：${Math.round(r.rate * 100)}% < ${Math.round(floor * 100)}%`)
+      console.log(`\n✓ 不低于下限 ${Math.round(floor * 100)}%`)
+    }
+    return
   }
 
   // v0.49.0（C3）：pass^k——参数扰动 k 次，看每条查询是不是每次都还 top-1
