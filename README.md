@@ -1,7 +1,7 @@
-# fish-memory-plugin v0.47.1
+# fish-memory-plugin v0.48.0
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-595%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-610%20passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependencies-0-blueviolet)
 
 **Local-first long-term memory for AI companions** · 给 AI 伴侣的本地长期记忆插件。
@@ -121,6 +121,7 @@ pm run audit |
 | 素材源（**素材在库外**）：`memory asset add --kind book\|doc\|transcript\|image\|audio\|video` 把原文放进库外的 `fish-memory-assets/`，库里只留清单与引用；`source: [asset:<kind>:<id>#L<n>]`，文本类原话逐字校验、图/音视频只验 sha256 | ❌ 把素材原文塞进档案 |
 | 能算账：memory stats 用真实日志算注入均值/分层占比/门控与命中率/每轮成本（只读，不改任何东西） | ❌ 拍脑袋调阈值 |
 | 套话计数（v0.47，只读）：`memory cliche` 数「多少轮带着『我记下了 / 这句稳』这类腔调」，只记族名不存原句；`voice mine` 不再把套话当口癖 | ❌ 注入提醒 / 自动改写 |
+| 别名半自动（v0.48）：`memory alias propose` 从他自己的措辞里数候选（同条消息共现 + ≥3 条不同消息），`accept` 才写回点的 `aliases:`；写回只动那一行，正文逐字不变 | ❌ 自动猜同义词写入 / 模型调用 |
 | 隐私脱敏（v0.31）：档案**入库前**把手机号/身份证/邮箱/卡号/API key/密码换成 `[脱敏:手机号]`；旧档案用 `memory redact --apply` 清（会重算链、留日志） | ❌ 把密钥永久躺在库里 |
 | 情绪评测基线（v0.32）：本地词典有公开准确率——62 条标注，三分类 83.9%（easy 100% / hard 50%）；node scripts/eval-emotion.mjs | 只有结构测试，没有准不准 |
 | 放不下的事（`question`）：翻记忆翻空了记一条，张力随天数涨、说出来会松；注入只带最重的一条（约 21 tok） | ❌ 假装她什么都不惦记 |
@@ -464,7 +465,7 @@ A/B 结果（同一份金标，只换权重）：
 | 取回来的做法 | 出处 | 我们的结果 |
 |---|---|---|
 | 字符二元组 + BM25 的 IDF 式 `ln(1+(N-df+0.5)/(df+0.5))` | [零依赖 JS 中文 BM25](https://bbs.huaweicloud.com/blogs/495939) | 实现成 `lib/idf.js`，**金标零增益**（19/20 → 同一个 19/20、同一边际），**所以默认关** |
-| 混排/RRF：多路排序再融合 | [memor-cli 用 RRF 合并两路排序](https://pypi.org/project/memor-cli/0.13.0/) | 我们只有一路强排序（bigram + 别名 + 强度），没有第二路可融合；**不做**，记在这儿免得后人重做 |
+| 混排/RRF：多路排序再融合 | [memor-cli 用 RRF 合并两路排序](https://pypi.org/project/memor-cli/0.13.0/) | **量过了，不做**：加词级通道后金标仍是 20/20（现行打分器已 20/20），误命中 7→9。见 `docs/RESEARCH-2026-11-04` §A1 |
 | 记忆条目之间的显式链接（Zettelkasten 式） | [A-MEM](https://scixplorer.org/abs/2025arXiv250212110X/abstract) | 已有：`links` 一跳展开（§注入顺序第 8 条），**不重复造** |
 | 时间有效边 / 旧事实失效 | [Graphiti（双时间轴）](https://help.getzep.com/facts.md) | 部分：`contradicts` + `merged` + `superseded`。完整双时间轴要改档案格式，**留着** |
 | 记忆抽取时的 ADD/UPDATE/DELETE 去重 | [mem0](https://newreleases.io/project/github/mem0ai/mem0/release/ts-v3.0.0) | 靠 `check`/`audit` 的 source + 逐字校验 + `merged_into`，没有自动去重；**下一步候选** |

@@ -82,7 +82,7 @@ P0 的三件全部指向这三点；P1 是补洞；P2 是写下来先别做的�
 
 ---
 
-### P0-2 · 别名半自动（先补召回，不引向量）→ v0.48.0
+### P0-2 · 别名半自动（先补召回，不引向量）→ **✅ v0.48.0 已落地（实现形态见下）**
 
 **问题（证据）**
 
@@ -116,7 +116,7 @@ P0 的三件全部指向这三点；P1 是补洞；P2 是写下来先别做的�
 
 ---
 
-### P0-3 · 真实语料回放基准 → v0.49.0
+### P0-3 · 真实语料回放基准 → v0.50.0
 
 **问题（证据）**
 
@@ -227,8 +227,8 @@ CHANGELOG 写「102 个文件（lib 44 · test 47 · docs 9）」，实测 **180
 |---|---|---|---|---|
 | ~~v0.46.1~~ | P0-0 默认值单源 + 显示修正（§5.1）——**2026-11-04 已落地** | ≥3 | 全闸门 | `settings.js`、`config.js`、`memory.mjs`（打印） |
 | ~~v0.47.0~~ | **已被「套话计数」占用**（用户直接需求，见 CHANGELOG v0.47.0），下表顺延一个版本 | — | — | `lib/cliche.js`、`voice.js`、`scaffold.js` |
-| v0.48.0 | P0-1 待审队列 + 提醒 | ≥8 | test / verify / hostcheck / gold / audit / selfcheck | `lib/pending.js`（新）、`render.assemble`、`index.js`、`memory.mjs` |
-| v0.49.0 | P0-2 别名半自动 | ≥10 | 同上 + gold 加 3 条同义查询 | `lib/alias.js`（新）、`memory.mjs`、`samples/` |
+| ~~v0.48.0~~ | P0-2 别名半自动——**2026-11-04 已落地**（`alias` 先做，因为它已实测能把同义 0.00 变成命中；P0-3 的基准随后） | 15 | 全闸门 | `lib/alias.js`（新）、`lib/toolkit.js`、`memory.mjs` |
+| v0.49.0 | P0-1 待审队列 + 提醒 | ≥8 | test / verify / hostcheck / gold / audit / selfcheck | `lib/pending.js`（新）、`render.assemble`、`index.js`、`memory.mjs` |
 | v0.50.0 | P0-3 回放 + bench 进 CI | ≥6 | CI 多两步 | `scripts/eval-replay.mjs`（新）、`ci.yml`、`samples/replay/` |
 | v0.51.0 | P1-1 冷归档 + P1-2 跨进程锁 | ≥10 | 同上 | `lib/archive.js`、`lib/integrity.js`、`memory.mjs` |
 | v0.51.x | P1-3~6 + 文档自净 | ≥8 | 同上 | `assets.js`、`emotion` 相关、`privacy.js`、文档 |

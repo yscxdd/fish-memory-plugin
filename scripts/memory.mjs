@@ -24,6 +24,7 @@
  *   wakeup [--out <目录>] [--json]  生成唤醒包（五件，目标 ≤4000 tok）→ 90_snapshot/wakeup-YYYYMMDD/
  *   tokens [--days N] [--json]      每轮注入 token 的账（50_log/token.log）
  *   cliche [--days 7] [--json]      套话密度（只读）：多少轮带着"我记下了/这句稳"这类腔调
+ *   alias                          别名半自动：propose/list/accept/reject（人点头才写回点）
  *   reset --all [--yes]  开养前清零：档案/状态/日志/快照/技能/草稿（00_core 与文档不动）
  *
  * flags：--dir <path>  --json  --check  --write  --force  --out <dir>
@@ -35,6 +36,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { applyForget, findDormant, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
 import { redactArchive } from '../lib/archive.js'
 import { acceptVoice, listProposals, mineVoice, readProposal, rejectVoice, writeVoiceProposal } from '../lib/voice.js'
+import { acceptAlias, aliasCoverage, aliasOverview, mineAliases, mineAll, pointVocab, rejectAlias } from '../lib/alias.js'
 import { latestRun, startRun } from '../lib/identity.js'
 import { forgottenLog, searchMemory, statusOf } from '../lib/inspect.js'
 import { withLock } from '../lib/lock.js'
@@ -1034,6 +1036,92 @@ function cmdHabit(sub, arg) {
   fail('用法：memory habit <list|add|block> ...')
 }
 
+// ── alias（别名半自动，v0.48.0）────────────────────────────────
+/**
+ * 召回率的天花板不在打分，在"词不是同一个词"。
+ * 实测：同义改述的二字组重合与词级重合都是 0.00（见 RESEARCH-2026-11-04 §A1）。
+ * 唯一能连上两套措辞的是别名，而别名只能由人点头——自动猜同义词 = 永久污染检索。
+ *
+ *   memory alias                      覆盖率 + 有待办的点
+ *   memory alias propose [<点>]       从他的措辞里挖候选（不写任何东西）
+ *   memory alias accept <点> <词...>   写回点的 aliases
+ *   memory alias reject <点> <词>      进拒绝表，以后不再提
+ *   memory alias list [<点>]          现在有哪些别名
+ */
+function cmdAlias(sub, args) {
+  needDir()
+  if (!sub) {
+    const c = aliasCoverage(dir)
+    const rows = mineAll(dir, { minSupport: 3, limit: 3 })
+    console.log(`别名覆盖：${c.withAlias}/${c.points} 个 active 点（${(c.rate * 100).toFixed(0)}%）`)
+    if (!c.points) {
+      console.log('（库里还没有 active 点——先有记忆，才谈得上别名）')
+      return
+    }
+    if (!rows.length) {
+      console.log('没有挖到候选。要么他已经用同一套词，要么档案还不够多。')
+      return
+    }
+    console.log('\n有候选的点：')
+    for (const r of rows) console.log(`  ${r.point}  ${r.candidates.map((x) => `${x.term}(${x.support})`).join(' ')}`)
+    console.log('\n下一步：memory alias propose <点> 看证据；memory alias accept <点> <词> 写回')
+    return
+  }
+  if (sub === 'propose') {
+    const id = args[0]
+    if (!id) {
+      const rows = mineAll(dir, { minSupport: 3, limit: 5 })
+      if (!rows.length) return console.log('没有候选。')
+      for (const r of rows) {
+        console.log(`\n${r.point}`)
+        for (const x of r.candidates) console.log(`  ${x.term.padEnd(8)} 共现 ${x.support} 条（他说的 ${x.inUser}）  例：${x.sample}`)
+      }
+      console.log('\n（只看不写。accept 才会进点文件。）')
+      return
+    }
+    const p = scanPointFiles(dir).points.find((x) => x.id === id || x.filename === id)
+    if (!p) fail(`找不到点 ${id}`)
+    const r = mineAliases(dir, p, { minSupport: 2, limit: 20 })
+    console.log(`${p.id}  ${p.title}`)
+    console.log(`已有的词：${[...pointVocab(p)].join(' ') || '（无）'}`)
+    if (!r.candidates.length) return console.log('\n没有候选：他的措辞没有偏离这条点的词表。')
+    console.log(`\n候选（共现 ${r.scanned} 条相关消息）：`)
+    for (const x of r.candidates) console.log(`  ${x.term.padEnd(8)} 共现 ${x.support}（他 ${x.inUser}）  ${x.sample}`)
+    console.log('\naccept 才会写回；reject 之后不再提。')
+    return
+  }
+  if (sub === 'accept') {
+    const [id, ...terms] = args
+    if (!id || !terms.length) fail('用法：memory alias accept <点> <词> [更多词...]')
+    for (const t of terms) {
+      const r = acceptAlias(dir, id, t)
+      if (!r.ok) fail(`${t}：${r.reason}`)
+      console.log(r.added ? `✓ ${id} += ${t}（现有 ${r.aliases.length} 条）` : `· ${id} 已有 ${t}，跳过`)
+    }
+    console.log('\n下轮检索就生效（store 有 30s 缓存，最迟半分钟后）。')
+    return
+  }
+  if (sub === 'reject') {
+    const [id, ...terms] = args
+    if (!id || !terms.length) fail('用法：memory alias reject <点> <词>')
+    for (const t of terms) {
+      const r = rejectAlias(dir, id, t)
+      if (!r.ok) fail(`${t}：${r.reason}`)
+    }
+    console.log(`✓ ${id} 的 ${terms.join(' ')} 已进拒绝表，以后不再提`)
+    return
+  }
+  if (sub === 'list') {
+    const id = args[0]
+    const rows = aliasOverview(dir)
+    const sel = id ? rows.filter((r) => r.id === id) : rows
+    if (!sel.length) return console.log(id ? `${id} 没有别名` : '还没有任何点带别名')
+    for (const r of sel) console.log(`${r.id.padEnd(16)} ${r.aliases.join(' / ')}   — ${r.title}`)
+    return
+  }
+  fail('用法：memory alias [propose|list|accept|reject] ...')
+}
+
 // ── cliche（套话密度）──────────────────────────────────────────
 /**
  * v0.46.1：只读地数"多少轮带着套话"。
@@ -1938,6 +2026,9 @@ switch (command || 'help') {
     break
   case 'cliche':
     cmdCliche(params[0], params.slice(1))
+    break
+  case 'alias':
+    cmdAlias(params[0], params.slice(1))
     break
   case 'presence':
     cmdPresence()
