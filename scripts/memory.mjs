@@ -50,7 +50,7 @@ import { HOST_POINTS } from '../lib/host.js'
 import { packMemory, unpackMemory } from '../lib/pack.js'
 import { RETURN_GAP_HOURS, loadPresence, presenceSummary, returnLine } from '../lib/presence.js'
 import { addHabit, habitsBlock, habitsSummary } from '../lib/habits.js'
-import { clicheReport, findCliches, pruneClicheLog } from '../lib/cliche.js'
+import { clicheReplay, clicheReport, findCliches, pruneClicheLog } from '../lib/cliche.js'
 import { readWere, writeWere } from '../lib/were.js'
 import { addSpecial, emotionLine, emptyState, loadEmotion, saveEmotion, specialsLine, TIER_DEFAULT, TIER_TEXT } from '../lib/emotion.js'
 import { behaviorCounts, pruneBehavior } from '../lib/behavior.js'
@@ -1055,6 +1055,26 @@ function cmdCliche(sub, args) {
     return
   }
   const days = Number(flagValue('--days') || 7)
+
+  // v0.47.1：回放——拿档案里已有的她的终稿重算，给"加规则之前"的基线
+  if (argv.includes('--replay')) {
+    const split = flagValue('--split') || null
+    const rp = clicheReplay(dir, { days: Number(flagValue('--days') || 90), split })
+    if (argv.includes('--json')) {
+      console.log(JSON.stringify(rp, null, 2))
+      return
+    }
+    const pct = (x) => Math.round(x.rate * 1000) / 10
+    console.log(`回放近 ${rp.days} 天：她回了 ${rp.totalTurns} 轮${rp.metaTurns ? `（另有 ${rp.metaTurns} 轮在讨论套话本身，已排除）` : ''}`)
+    console.log(`  全部：${rp.all.hitTurns} 轮带套话（${pct(rp.all)}%）`)
+    if (rp.split && rp.before && rp.after) {
+      console.log(`  切点 ${rp.split} 之前：${rp.before.turns} 轮 · ${rp.before.hitTurns} 轮命中（${pct(rp.before)}%）`)
+      console.log(`  切点 ${rp.split} 之后：${rp.after.turns} 轮 · ${rp.after.hitTurns} 轮命中（${pct(rp.after)}%）`)
+    }
+    console.log('\n只读回放：不改档案、不写日志。')
+    return
+  }
+
   const r = clicheReport(dir, { days })
   if (argv.includes('--json')) {
     console.log(JSON.stringify(r, null, 2))
