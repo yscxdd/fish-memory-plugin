@@ -47,6 +47,7 @@ import { writeVault } from '../lib/vault.js'
 import { buildSelfPack, latestSelf, promoteSelf, selfDraftPath, SELF_MAX_CHARS } from '../lib/self.js'
 import { privacyReport, writeGitignoreBlock } from '../lib/privacy.js'
 import { abGold, GOLD_FLOOR, runGold, WEIGHT_SETS } from '../lib/goldset.js'
+import { goldStability } from './gold-stability.mjs'
 import { checkHost } from '../lib/hostcheck.js'
 import { HOST_POINTS } from '../lib/host.js'
 import { packMemory, unpackMemory } from '../lib/pack.js'
@@ -1733,6 +1734,27 @@ function cmdGold() {
   const threshold = rawThreshold === undefined ? 0.8 : Number(rawThreshold)
   if (!Number.isFinite(threshold) || threshold < 0 || threshold > 20) {
     fail('--threshold 要是 0..20 的数字（默认 0.8）')
+  }
+
+  // v0.49.0（C3）：pass^k——参数扰动 k 次，看每条查询是不是每次都还 top-1
+  const repeatArg = flagValue('--repeat')
+  if (repeatArg !== undefined) {
+    const repeat = Number(repeatArg)
+    if (!Number.isFinite(repeat) || repeat < 2 || repeat > 20) fail('--repeat 要是 2..20 的整数')
+    const jitter = Number(flagValue('--jitter') || 0.05)
+    const st = goldStability({ repeat, jitter, threshold })
+    if (flags.has('--json')) {
+      console.log(JSON.stringify(st, null, 2))
+      process.exit(st.passRate >= 0.9 ? 0 : 1)
+    }
+    console.log(`金标 pass^${st.repeat}（扰动 ±${Math.round(st.jitter * 100)}%）：稳定 ${st.stable}/${st.detail.length} = ${Math.round(st.passRate * 100)}%`)
+    console.log(`  不稳 ${st.fragile} · 一次没中 ${st.alwaysMiss}`)
+    for (const x of st.runs) console.log(`  第 ${x.i} 次：${x.hits}/${x.total} · 阈值 ${x.threshold} · 边际 ${x.margin}`)
+    if (st.worst.length) {
+      console.log('  不稳的：')
+      for (const w of st.worst) console.log(`    ${w.query} → ${w.hits}/${w.of}`)
+    }
+    process.exit(st.passRate >= 0.9 ? 0 : 1)
   }
 
   if (flags.has('--ab')) {
