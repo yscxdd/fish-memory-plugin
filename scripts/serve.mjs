@@ -11,6 +11,8 @@
  *   GET  /health
  *   GET  /status
  *   GET  /context?session=&q=&mode=&scope=   有界上下文 + 检索 + 状态（scope 缺省 = dm:master）
+ *   GET  /today                                "她今天"一屏（只读；给 /dashboard 用）
+ *   GET  /dashboard                            她自己的一页（2 秒自动刷新，仅本机）
  *   GET  /scope?channelType=&groupId=&senderId=&masterIds=&homeGroups=&memberRole=
  *                                            "这条消息属于谁"（只判归属，不写任何东西）
  *   POST /outcome {ability, result, note}        学习结果（显式回传）
@@ -24,6 +26,8 @@ import { join, resolve } from 'node:path'
 import { MemoryStore } from '../lib/store.js'
 import { assemble } from '../lib/render.js'
 import { filterForScope, parseContextQuery, scopeAnswer } from '../lib/serveapi.js'
+import { renderDashboardHtml } from './dashboard-html.mjs'
+import { todayView } from '../lib/today.js'
 import { detectMode, layoutAbilities, rankAbilities, renderTools, scanAbilities } from '../lib/mode.js'
 import { rankHybrid } from '../lib/retrieve.js'
 import { SELF_TOPIC, latestSelf, renderSelfBlock } from '../lib/self.js'
@@ -90,6 +94,15 @@ const server = createServer((req, res) => {
       if (!parsed.ok) return json(res, parsed.status, { error: parsed.error })
       const body = contextFor(parsed.session, parsed.q, parsed.mode, parsed.scope)
       return json(res, 200, { ...body, scope: parsed.scope })
+    }
+    if (req.method === 'GET' && url.pathname === '/today') {
+      return json(res, 200, todayView(dir))
+    }
+    if (req.method === 'GET' && url.pathname === '/dashboard') {
+      const html = renderDashboardHtml()
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
+      res.end(html)
+      return
     }
     if (req.method === 'GET' && url.pathname === '/scope') {
       const sp = url.searchParams

@@ -70,6 +70,7 @@ import { mergeCheck } from '../lib/mergecheck.js'
 import { buildHandoffFromArchive, clearHandoff, readHandoff } from '../lib/handoff.js'
 import { scopeAnswer } from '../lib/serveapi.js'
 import { voiceMetrics } from '../lib/voicemetrics.js'
+import { renderToday, todayView } from '../lib/today.js'
 import { readJsonSafe } from '../lib/util.js'
 import { SCOPE_DM_MASTER, isGroupScope, validateScope } from '../lib/scope.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
@@ -612,6 +613,25 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── today（她的今天：一屏，只读）──────────────────────────────
+/**
+ * v0.63.0。回答两个问题：**她什么心情**、**今天都做了什么**。
+ *
+ * 六个块：心情 / 聊了 / 记住 / 写了 / 悬着 / 到期。
+ * 心情用**句子**不用刻度盘——数字摆出来人就想调一格，那是把人当仪表盘。
+ */
+function cmdToday() {
+  needDir()
+  const view = todayView(dir)
+  if (flags.has('--json')) {
+    console.log(JSON.stringify(view, null, 2))
+    return
+  }
+  console.log(renderToday(view))
+  console.log('')
+  console.log('  （只读：不补算 drift、不 touch 问题、不写任何文件）')
 }
 
 // ── voice-metrics（她说话的样子 · 八维，只读）──────────────
@@ -2187,6 +2207,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'today':
+    cmdToday()
     break
   case 'voice-metrics':
     cmdVoiceMetrics()
