@@ -982,6 +982,21 @@ test('压力到 80%：注入里明说"该开新会话"，并先把交接包写�
   agent.session.header.cwd = dir
 
   ctx.emit('agent/inbox/inserted', { agent, message: userMsgOf('m-1', '在吗') })
+  // v0.54.1（H6）：全空不写包。这条用例要验的是"到换窗线会写"，所以先让它有一句可交接的话，
+  // 否则测的是"空会话不写"（那是另一条用例）。
+  // v0.54.1（H6）：全空不写包。这条用例要验"到换窗线会写"，所以先让它有一句可交接的话。
+  // 用 session/event（touchSession 的入口）而不是 inbox——tail 只由前者维护。
+  ctx.emit(
+    'session/event',
+    { id: 'p-85', header: { cwd: dir } },
+    {
+      type: 'user/message',
+      seq: 1,
+      time: Date.now(),
+      surfaceOp: 'append',
+      data: { id: 'm-1', role: 'user', content: [{ type: 'text', text: '在吗' }], source: { kind: 'user' } },
+    },
+  )
   ctx.emit('agent/turn-stopping', { agent })
 
   assert.ok(existsSync(join(dir, '20_state/handoff.json')), '到换窗线要先把「接着聊」包写出来')

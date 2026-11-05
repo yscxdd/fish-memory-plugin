@@ -91,7 +91,8 @@ test('交接包含两栏、带 caveat、每栏 ≤2 条', () => {
 test('没有问题时两栏都不出现（不写空标题）', () => {
   const dir = fixture()
   seedQuestions(dir, [])
-  const r = buildHandoff(dir, { id: 's1', tail: [], open_threads: [] })
+  // v0.54.1（H6）：全空不写包，所以这里必须给一条尾巴，否则返回 null
+  const r = buildHandoff(dir, { id: 's1', tail: [{ role: 'user', text: '普通一句' }], open_threads: [] })
   assert.ok(!r.text.includes('我还惦记着：'))
   assert.ok(!r.text.includes('别再提：'))
 })
@@ -121,7 +122,7 @@ test('手动写：从档案尾部拼，且不编"没做完的事"', () => {
 
 test('--clear 删得掉，且删两次不报错', () => {
   const dir = fixture()
-  buildHandoff(dir, { id: 's1', tail: [], open_threads: [] })
+  buildHandoff(dir, { id: 's1', tail: [{ role: 'user', text: '普通一句' }], open_threads: [] })
   assert.equal(existsSync(join(dir, '20_state', 'handoff.json')), true)
   assert.equal(clearHandoff(dir).removed, true)
   assert.equal(clearHandoff(dir).removed, false)
