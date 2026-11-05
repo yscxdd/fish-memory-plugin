@@ -1,4 +1,4 @@
-# fish-memory-plugin v0.63.1
+# fish-memory-plugin v0.64.0
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
 ![tests](https://img.shields.io/badge/tests-722%20passing-brightgreen)

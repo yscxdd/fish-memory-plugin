@@ -56,7 +56,10 @@ test('预算的账：700+700+300 = 1700，正好顶格，且这个数是被钉�
   assert.equal(INJECT_HARD_CAP, 1700)
   assert.equal(injectBudgetTotal(DEFAULT_BUDGET), INJECT_HARD_CAP, '合计必须正好等于上限')
 
-  assert.equal(DEFAULT_BUDGET.status, 60, '总设计 §5.4：关系状态独立 60 tok（不计入 1700）')
+  // v0.64.0：状态块多了「今天是哪天」一行（她唯一的绝对时间来源），独立预算 60 → 80。
+  // 这 20 tok **不计入 1700**（injectBudgetTotal 只算 core+index+body），
+  // 即"上限没被偷偷抬高"，抬的是那个本来就独立的口袋。
+  assert.equal(DEFAULT_BUDGET.status, 80, '总设计 §5.4 + v0.64.0：关系状态独立 80 tok（含时间行，不计入 1700）')
 
   // 顶格 = 零余量。任何一层涨一点就破约——这条断言就是"别偷偷加预算"的闸门。
   assert.ok(injectBudgetTotal({ ...DEFAULT_BUDGET, body: 310 }) > INJECT_HARD_CAP, '正文涨 10 tok 就破约')
