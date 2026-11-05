@@ -1,6 +1,6 @@
 {
   "name": "dsh-fish-memory",
-  "version": "0.52.1",
+  "version": "0.52.2",
   "private": true,
   "type": "module",
   "description": "Local-first long-term memory for AI companions: markdown memory + append-only JSONL transcripts, budgeted prompt injection, source-traceable, zero dependencies. 给 AI 伴侣的本地长期记忆插件（无向量库、无遥测）",
@@ -36,6 +36,7 @@
   ],
   "scripts": {
     "test": "node --test --test-reporter=spec",
+    "test:tz": "node scripts/test-tz.mjs",
     "verify": "node scripts/memory.mjs verify",
     "hostcheck": "node scripts/memory.mjs hostcheck",
     "gold": "node scripts/memory.mjs gold",
