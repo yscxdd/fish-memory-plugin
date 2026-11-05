@@ -67,6 +67,7 @@ import { everythingStatus, findWithEverything, saveConfig } from '../lib/everyth
 import { TUNABLES, effectiveValue, resetSetting, setSetting } from '../lib/settings.js'
 import { writeReport } from '../lib/report.js'
 import { mergeCheck } from '../lib/mergecheck.js'
+import { buildHandoffFromArchive, clearHandoff, readHandoff } from '../lib/handoff.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -607,6 +608,42 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── handoff（换窗交接包：看 / 手动写 / 清）────────────────────
+/**
+ * v0.52.0：现在交接包只能靠事件触发（压缩开始 / 压力换窗），太被动。
+ *   memory handoff            看当前包（有没有、什么时候写的、两栏内容）
+ *   memory handoff --write    用档案最近 8 条手动拼一份（"没做完的事"留空，不编）
+ *   memory handoff --clear    删掉（下一轮就不会读到它）
+ */
+function cmdHandoff() {
+  needDir()
+  if (flags.has('--clear')) {
+    const r = clearHandoff(dir)
+    console.log(r.removed ? '✓ 交接包已删除' : '（本来就没有）')
+    return
+  }
+  if (flags.has('--write')) {
+    const r = buildHandoffFromArchive(dir)
+    if (!r) fail('档案里还没有消息，拼不出交接包')
+    console.log(`✓ 写好了：近 ${r.tail} 条 + 惦记 ${r.regrets} 条 + 别再提 ${r.doNotMention} 条`)
+    console.log(r.text)
+    return
+  }
+  const h = readHandoff(dir)
+  if (!h) {
+    console.log('现在没有交接包。')
+    console.log('  · 压缩开始时（compaction/start）会自动写；')
+    console.log('  · 也可以手动：memory handoff --write')
+    return
+  }
+  const age = Math.round((Date.now() - Date.parse(h.at)) / 60000)
+  console.log(`交接包：${h.at}（${age} 分钟前，来自 ${h.from}）`)
+  if (h.regrets?.length) console.log(`  我还惦记着：${h.regrets.join(' / ')}`)
+  if (h.doNotMention?.length) console.log(`  别再提：${h.doNotMention.join(' / ')}`)
+  console.log('')
+  console.log(h.text)
 }
 
 // ── merge-check（只读：两个库差在哪）──────────────────────────
@@ -2069,6 +2106,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'handoff':
+    cmdHandoff()
     break
   case 'merge-check':
     cmdMergeCheck(params[0])
