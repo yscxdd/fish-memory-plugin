@@ -24,7 +24,7 @@ import { rankHybrid } from '../lib/retrieve.js'
 import { readPointFiles } from '../lib/toolkit.js'
 import { runHard } from '../scripts/gold-hard.mjs'
 
-const NOW = new Date('2026-11-05T12:00:00+08:00')
+const NOW = new Date(2026, 10, 5, 12)
 
 test('基线：关节不舒服 → 空（这是缺口本身）', () => {
   const r = runHard({ now: NOW })

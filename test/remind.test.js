@@ -24,7 +24,7 @@ import { MemoryStore } from '../lib/store.js'
 import { readPointFiles } from '../lib/toolkit.js'
 import { dueLine, duePoints, freshDue, loadReminded, markReminded, remindLine } from '../lib/remind.js'
 
-const NOW = new Date('2026-11-01T10:00:00+08:00')
+const NOW = new Date(2026, 10, 1, 10)
 const P = (over = {}) => ({
   id: 'M-2026-10-30-001',
   title: '陪他去海边',

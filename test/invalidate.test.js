@@ -71,7 +71,7 @@ function makeLib(points = []) {
 // ── A3 · isInvalidated 语义 ────────────────────────────────────
 
 test('失效判断：过去=失效；未来/null/坏日期=不失效（老点无字段）', () => {
-  const now = new Date('2026-10-31T12:00:00+08:00')
+  const now = new Date(2026, 9, 31, 12)
   assert.equal(isInvalidated({ invalid_at: '2026-10-30' }, now), true)
   assert.equal(isInvalidated({ invalidAt: '2026-10-30' }, now), true, 'store 里是 camelCase')
   assert.equal(isInvalidated({ invalid_at: '2026-12-01' }, now), false)

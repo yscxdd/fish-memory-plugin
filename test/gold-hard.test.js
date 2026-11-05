@@ -23,7 +23,7 @@ import { runHard } from '../scripts/gold-hard.mjs'
 import { retrievalWeight } from '../lib/rank.js'
 
 test('题目结构：四类都在，日期相对 now', () => {
-  const now = new Date('2026-11-05T12:00:00+08:00')
+  const now = new Date(2026, 10, 5, 12, 0, 0)
   const { points, queries } = buildHardSet(now)
   assert.equal(points.length, 11)
   assert.equal(queries.length, 10)
@@ -34,14 +34,14 @@ test('题目结构：四类都在，日期相对 now', () => {
 })
 
 test('跑分：当前 7/10（会输的尺子）', () => {
-  const now = new Date('2026-11-05T12:00:00+08:00')
+  const now = new Date(2026, 10, 5, 12, 0, 0)
   const r = runHard({ now })
   assert.equal(r.total, 10)
   assert.equal(r.hit, 7, `实际 ${r.hit}/10：${r.rows.map((x) => x.query + '→' + x.got).join(' | ')}`)
 })
 
 test('时序两题必须 hit——这是 A3 时间窗的端到端证据', () => {
-  const now = new Date('2026-11-05T12:00:00+08:00')
+  const now = new Date(2026, 10, 5, 12, 0, 0)
   const r = runHard({ now })
   const t1 = r.rows.find((x) => x.query.includes('上周三'))
   const t2 = r.rows.find((x) => x.query.includes('最近三天'))
@@ -51,7 +51,7 @@ test('时序两题必须 hit——这是 A3 时间窗的端到端证据', () => 
 })
 
 test('同义确实会空：这是别名的活，不是打分的活', () => {
-  const now = new Date('2026-11-05T12:00:00+08:00')
+  const now = new Date(2026, 10, 5, 12, 0, 0)
   const r = runHard({ now })
   const syn = r.rows.find((x) => x.query === '关节不舒服')
   assert.equal(syn.verdict, 'miss', '字面完全不重合，本来就该空')
@@ -59,7 +59,7 @@ test('同义确实会空：这是别名的活，不是打分的活', () => {
 })
 
 test('否定题现在会答错——记录下来，不遮掩', () => {
-  const now = new Date('2026-11-05T12:00:00+08:00')
+  const now = new Date(2026, 10, 5, 12, 0, 0)
   const r = runHard({ now })
   const neg = r.rows.find((x) => x.category === '否定')
   assert.equal(neg.verdict, 'bad', '当前会答成"他讨厌香菜"那条：否定词读反')
@@ -67,7 +67,7 @@ test('否定题现在会答错——记录下来，不遮掩', () => {
 })
 
 test('判定顺序：top-1 对就算 hit，哪怕错条也在候选里', () => {
-  const now = new Date('2026-11-05T12:00:00+08:00')
+  const now = new Date(2026, 10, 5, 12, 0, 0)
   const r = runHard({ now })
   const t3 = r.rows.find((x) => x.expect === 'T3')
   // T3 那条不一定 hit，但无论如何不该被记成 bad（bad 只给 top-1 是错条的情况）
@@ -78,14 +78,14 @@ test('权重单源：rank.retrievalWeight 与线上同一条链', () => {
   const p = { date: '2026-10-28', cluster: '日常', tags: [] }
   const plain = retrievalWeight(p, {})
   assert.equal(plain, 1)
-  const range = { from: new Date('2026-10-28T00:00:00'), to: new Date('2026-10-28T23:59:59'), label: '上周三' }
+  const range = { from: new Date(2026, 9, 28, 0, 0, 0), to: new Date(2026, 9, 28, 23, 59, 59), label: '上周三' }
   assert.equal(retrievalWeight(p, { range }), 1.25)
   assert.equal(retrievalWeight({ date: '2026-11-04', cluster: '日常', tags: [] }, { range }), 0.8)
 })
 
 
 test('尺子不许随时刻漂：凌晨和深夜跑，结果必须一样', () => {
-  const midnight = runHard({ now: new Date('2026-11-05T01:00:00+08:00') })
-  const late = runHard({ now: new Date('2026-11-05T23:30:00+08:00') })
+  const midnight = runHard({ now: new Date(2026, 10, 5, 1, 0, 0) })
+  const late = runHard({ now: new Date(2026, 10, 5, 23, 30, 0) })
   assert.equal(midnight.hit, late.hit, '差 8 小时就变，说明日期格式化又用了 UTC')
 })

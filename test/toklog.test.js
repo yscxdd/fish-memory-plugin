@@ -47,7 +47,7 @@ test('assemble 返回分块 token，且加起来对得上总数', () => {
 
 test('记两轮 → 读得回来，均值和分块都算得对', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fishmem-tok-'))
-  const now = new Date('2026-10-31T22:00:00+08:00')
+  const now = new Date(2026, 9, 31, 22)
   appendTokenLog(dir, { turn: 1, mode: 'daily', gate: 'hit', core: 300, index: 100, body: 50, total: 500, rendered: 2 }, now)
   appendTokenLog(dir, { turn: 2, mode: 'task', gate: 'skip', core: 300, index: 0, body: 150, total: 700, rendered: 3 }, now)
 
@@ -68,7 +68,7 @@ test('记两轮 → 读得回来，均值和分块都算得对', () => {
 
 test('按天过滤：7 天外的账不算进汇总', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fishmem-tok2-'))
-  const now = new Date('2026-10-31T22:00:00+08:00')
+  const now = new Date(2026, 9, 31, 22)
   appendTokenLog(dir, { turn: 1, total: 999 }, new Date(now.getTime() - 30 * 86_400_000))
   appendTokenLog(dir, { turn: 2, total: 400 }, now)
   const s = summarizeTokenLog(dir, { days: 7, now })
