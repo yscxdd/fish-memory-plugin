@@ -1,4 +1,4 @@
-# 变更年表 · 2026-10-30/31 · v0.5.8 → v0.58.0
+# 变更年表 · 2026-10-30/31 · v0.5.8 → v0.59.0
 
 > 这份是给"回看"用的：哪一版改了什么、为什么改、动了哪条不变量、当时有多少测试。
 > 交接看 `HANDOFF-2026-10-30.md`；契约细节看 `大肥鱼-插件接口契约-v1.0.md`。
@@ -83,8 +83,9 @@
 | v0.56.0 | **`memory fidelity`：两格保真度** | 685 | 矛盾消解 3/5（60%）· 换窗保留 4/4 · 第一版量错了对象，改对了 |
 | v0.57.0 | **运行期硬上限 + 交接包总长** | 691 | 超 1700 tok 喊一次（不拦）· 交接包 ≤1200 tok，砍尾巴不砍关系状态 |
 | v0.58.0 | **作用域隔离（QQ 群的前置）** | 703 | `scope` 一列 · 双向隔离（群看不进私聊，私聊也不看群）· 群点不许 pin:hard/chosen/salience>3 |
+| v0.59.0 | **QQ 接入准备：可隔着 HTTP 问归属** | 712 | `GET /scope` · `/context?scope=` 非法必 400 · `memory scope` · 接入契约文档 |
 
-**当前规模**：212 个文件（`lib` 68 · `scripts` 18 · `test` 91 · `skills` 1 · `docs` 20 · `samples` 5 · 仓库根 9）。
+**当前规模**：215 个文件（`lib` 69 · `scripts` 18 · `test` 92 · `skills` 1 · `docs` 21 · `samples` 5 · 仓库根 9）。
 测试 97 → 649（**+552**）。
 
 ---
@@ -1888,6 +1889,57 @@ GitHub 还会缓存历史。改成拼接的字符串了。
 外层读不到 → 注入整段变空，五个 apply 端到端测试同时红。教训：**在 JS 里插一行，要看清它在哪个 block 里**。
 
 - 测试 691 → 703（resolveScope 5 条 / 双向隔离 / 历史兼容 / 群三条约束 / 私聊不受限）
+
+### v0.59.0 · QQ 接入准备：把闸门做成"隔着 HTTP 能问的"（712 测试）
+
+v0.58.0 加了 `scope` 但没人给它传值——"备好了没接电"。这一版接上电，
+并把**通道侧需要知道的一切**写成契约：`docs/CONTRACT-2026-11-05-qq-channel.md`。
+
+**两个接口（通道只用记这两条）**
+
+```
+GET /scope?channelType=group&groupId=123&senderId=u1&masterIds=u1&homeGroups=123
+→ { scope: "group:123", role: "member", readOnly: true, mayWriteCore: false }
+
+GET /context?q=...&scope=group:123
+→ { text: "...", mode: "daily", tokens: 447, scope: "group:123" }
+```
+
+**三个不可谈判的约定**：
+
+1. `mayWriteCore` 恒为 `false`——任何人、任何渠道、任何角色；
+2. 群里 `role` **永远不是 master**，哪怕 id 在白名单里（主人自己的群也一样）；
+3. **判定只认不可改的 id**，绝不认昵称（官方昵称可改，OneBot 群名片谁都能设）。
+
+**`scope` 拼错必须 400，不许猜**：
+
+```
+group:   → 400            （不是 "group" 也不是 "group:"）
+Group:1  → 400
+不传      → dm:master      （老客户端行为不变）
+```
+
+理由：scope 是隔离边界。拼错后被静默当成私聊，**会让人以为隔离生效了**——比没隔离更糟。
+
+**新命令 `memory scope`**（不开服务也能核）：
+
+```
+memory scope                                   → 默认作用域
+memory scope --check group:123                 → 校验写法
+memory scope --channel group --group 123 --sender u1 --masters u1 --homes 123
+                                               → 归属 + 角色 + 能不能写
+```
+
+**没做的（照旧说清楚）**：`/ingest` 写入接口还是没开。原因写在代码注释与契约第 4 节：
+写入路径要带 `seq`（幂等键），而 scope + seq + 鉴权三件事想清楚之前，
+**开一个 HTTP 写入面等于把"谁都能往真相层追加"暴露成网络面**。所以现在是"只读接入"：
+她能在群里**记得**，但群里的话不会自动进库。
+
+**过程中第 N 次踩同一个坑**：PowerShell 的 `.Replace` 里写 `"\n"` 字面量，
+直接把文件写坏（`import ...\nimport ...`）。这已经是第五次了——**以后改文件一律用 node 脚本，不用 PS 字符串**。
+
+- 测试 703 → 712（scope 解析 4 条 / 非法必 400 / 过滤双向 / /scope 归属 / validateScope 边界）
+
 
 
 

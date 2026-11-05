@@ -10,7 +10,9 @@
  * 现在提供：
  *   GET  /health
  *   GET  /status
- *   GET  /context?session=&q=&mode=daily|task   有界上下文 + 检索 + 状态
+ *   GET  /context?session=&q=&mode=&scope=   有界上下文 + 检索 + 状态（scope 缺省 = dm:master）
+ *   GET  /scope?channelType=&groupId=&senderId=&masterIds=&homeGroups=&memberRole=
+ *                                            "这条消息属于谁"（只判归属，不写任何东西）
  *   POST /outcome {ability, result, note}        学习结果（显式回传）
  *
  * 不做：消息写入（等 QQ 适配器；写入路径要带 seq，不能随便开）。
@@ -21,6 +23,7 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { MemoryStore } from '../lib/store.js'
 import { assemble } from '../lib/render.js'
+import { filterForScope, parseContextQuery, scopeAnswer } from '../lib/serveapi.js'
 import { detectMode, layoutAbilities, rankAbilities, renderTools, scanAbilities } from '../lib/mode.js'
 import { rankHybrid } from '../lib/retrieve.js'
 import { SELF_TOPIC, latestSelf, renderSelfBlock } from '../lib/self.js'
@@ -42,8 +45,9 @@ function json(res, code, body) {
   res.end(text)
 }
 
-function contextFor(session, q, forceMode) {
-  const points = store.indexPoints()
+function contextFor(session, q, forceMode, scope = 'dm:master') {
+  // v0.59.0：按 scope 过滤（真要进群时，通道把 scope 传进来即可）
+  const points = filterForScope(store.indexPoints(), scope)
   const mode = forceMode || detectMode(q, { lastAssistantText: '' }).mode
   const picked = rankHybrid(points, q, { threshold: 0.8, limit: 20, weight: (p) => store.memoryWeight(p) })
     .slice(0, 3)
@@ -80,12 +84,27 @@ const server = createServer((req, res) => {
   try {
     const url = new URL(req.url, `http://127.0.0.1:${port}`)
     if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true, dir })
-    if (req.method === 'GET' && url.pathname === '/status') return json(res, 200, statusOf(dir))
+    if (req.method === 'GET' && url.pathname === '/status') return json(res, 200, { ...statusOf(dir), scope: process.env.FISH_MEMORY_SCOPE || 'dm:master' })
     if (req.method === 'GET' && url.pathname === '/context') {
-      const q = url.searchParams.get('q') || ''
-      const session = url.searchParams.get('session') || ''
-      const mode = url.searchParams.get('mode') || undefined
-      return json(res, 200, contextFor(session, q, mode))
+      const parsed = parseContextQuery(url.searchParams)
+      if (!parsed.ok) return json(res, parsed.status, { error: parsed.error })
+      const body = contextFor(parsed.session, parsed.q, parsed.mode, parsed.scope)
+      return json(res, 200, { ...body, scope: parsed.scope })
+    }
+    if (req.method === 'GET' && url.pathname === '/scope') {
+      const sp = url.searchParams
+      return json(
+        res,
+        200,
+        scopeAnswer({
+          channelType: sp.get('channelType'),
+          groupId: sp.get('groupId'),
+          senderId: sp.get('senderId'),
+          masterIds: sp.get('masterIds'),
+          homeGroups: sp.get('homeGroups'),
+          memberRole: sp.get('memberRole'),
+        }),
+      )
     }
     if (req.method === 'POST' && url.pathname === '/outcome') {
       let body = ''

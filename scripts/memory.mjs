@@ -68,6 +68,9 @@ import { TUNABLES, effectiveValue, resetSetting, setSetting } from '../lib/setti
 import { writeReport } from '../lib/report.js'
 import { mergeCheck } from '../lib/mergecheck.js'
 import { buildHandoffFromArchive, clearHandoff, readHandoff } from '../lib/handoff.js'
+import { scopeAnswer } from '../lib/serveapi.js'
+import { readJsonSafe } from '../lib/util.js'
+import { SCOPE_DM_MASTER, isGroupScope, validateScope } from '../lib/scope.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -608,6 +611,52 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── scope（这条记忆属于谁：看默认值 / 判一条渠道消息）──────────
+/**
+ * v0.59.0 接入准备。通道侧只用两个接口：
+ *   GET /scope?...   这条消息属于谁
+ *   GET /context?...&scope=group:123
+ * 这个命令是它们的本地版，方便不上服务时核对。
+ *
+ *   memory scope                                   看默认作用域
+ *   memory scope --channel group --group 123 --sender u1 --masters u1 --homes 123
+ *   memory scope --check group:123                 校验写法
+ */
+function cmdScope() {
+  const check = flagValue('--check')
+  if (check) {
+    const v = validateScope(check)
+    console.log(v.ok ? `✓ 合法：${v.scope}` : `✗ ${v.reason}`)
+    return
+  }
+  if (flags.has('--channel')) {
+    const r = scopeAnswer({
+      channelType: flagValue('--channel'),
+      groupId: flagValue('--group'),
+      senderId: flagValue('--sender'),
+      masterIds: flagValue('--masters') || '',
+      homeGroups: flagValue('--homes') || '',
+      memberRole: flagValue('--role'),
+    })
+    console.log(`作用域：${r.scope}`)
+    console.log(`  角色：${r.role}（${r.reason}）`)
+    console.log(`  只读：${r.readOnly ? '是' : '否'}`)
+    console.log(`  能写核心层：${r.mayWriteCore ? '能' : '不能（任何人、任何渠道都不能）'}`)
+    console.log(`  写入落点：${r.writeTarget}`)
+    if (isGroupScope(r.scope)) {
+      console.log('  群作用域的限制：不能 pin:hard / 不能 origin:chosen / salience ≤ 3')
+    }
+    return
+  }
+  // 配置里的 scope（没配就是 dm:master）
+  const cfgScope = readJsonSafe(join(dir, 'memory.json'), {})?.scope
+  const configured = cfgScope || SCOPE_DM_MASTER
+  const v = validateScope(configured)
+  console.log(`默认作用域：${configured}${v.ok ? '' : '  ← 配置里这个值不合法'}`)
+  console.log('  · 缺省是主人私聊（dm:master）；历史点没有 scope 的按 global 处理，不用迁移。')
+  console.log('  · 通道侧要判"这条消息属于谁"：memory scope --channel group --group <id> --sender <id> --masters <id> --homes <id>')
 }
 
 // ── handoff（换窗交接包：看 / 手动写 / 清）────────────────────
@@ -2106,6 +2155,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'scope':
+    cmdScope()
     break
   case 'handoff':
     cmdHandoff()
