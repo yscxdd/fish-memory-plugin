@@ -39,6 +39,7 @@ test('抓得到失败用例名（去掉耗时；重复行去重）', () => {
 
 test('三个时区都覆盖；已知债按"时区"分开记', () => {
   assert.deepEqual(ZONES, ['UTC', 'Asia/Shanghai', 'America/New_York'])
-  assert.ok(Array.isArray(KNOWN['America/New_York']))
+  assert.ok(Array.isArray(KNOWN['America/New_York']), 'KNOWN 的每一项都必须是数组（可以是空）')
   assert.equal((KNOWN['UTC'] || []).length, 0, 'UTC 不该有已知债')
+  assert.equal(KNOWN['America/New_York'].length, 0, 'v0.53.0 起纽约也没有已知债了')
 })

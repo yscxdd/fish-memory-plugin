@@ -35,11 +35,11 @@ export const ZONES = ['UTC', 'Asia/Shanghai', 'America/New_York']
  * 加东西进这个表之前，先在 CHANGELOG 里写清"为什么"。
  */
 export const KNOWN = {
-  'America/New_York': [
-    'startRun：同一天第二次自动加序号，latestRun 指对',
-    '#1 档案只追加：换掉一行的正文，链校验必须失败',
-    '#3 幂等（实况）：同一 seq 只入库一次；同一 msgid_plat 换个 seq 会进两行，但审计必须报出来',
-  ],
+  // v0.53.0：原本这里有 3 条"只在纽约时区失败"的债（identity.startRun、档案链 #1/#3）。
+  // 根因是**测试**用 UTC 时间戳构造、而库按**本地日**分文件（库是对的，测试是错的）。
+  // 现在已改测试，白名单清空——但保留这个空数组，让结构自解释：以后再加债，
+  // 就往对应的时区里放，别在别处开小灶。
+  'America/New_York': [],
 }
 
 /** 从 node --test 的输出里数数、抓失败用例名 */

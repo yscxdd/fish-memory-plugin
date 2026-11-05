@@ -28,8 +28,8 @@ test('答题卡：20 个小题 + 评分规则', () => {
 
 test('startRun：同一天第二次自动加序号，latestRun 指对', () => {
   const dir = mkdtempSync(join(tmpdir(), 'fishmem-id-'))
-  const a = startRun(dir, { now: new Date('2026-10-30T01:00:00Z') })
-  const b = startRun(dir, { now: new Date('2026-10-30T02:00:00Z') })
+  const a = startRun(dir, { now: new Date(2026, 9, 30, 9, 0, 0) })
+  const b = startRun(dir, { now: new Date(2026, 9, 30, 10, 0, 0) })
   assert.notEqual(a, b)
   assert.match(a, /2026-10-30-01$/)
   assert.match(b, /2026-10-30-02$/)

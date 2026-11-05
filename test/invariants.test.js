@@ -66,7 +66,7 @@ const ARCHIVE = { byId: new Map([['msg-1', { id: 'msg-1', text: '这种天气看
 // ── #1 档案只追加（例外只有 erase / reset --all）────────────────
 test('#1 档案只追加：换掉一行的正文，链校验必须失败', async () => {
   const dir = fixture()
-  const t0 = new Date('2026-10-30T03:00:00Z').getTime()
+  const t0 = new Date(2026, 9, 30, 10, 0, 0).getTime()
   const w = new ArchiveWriter(dir)
   for (let i = 1; i <= 3; i++) {
     await w.handle('s1', {
@@ -107,7 +107,7 @@ test('#2 source 必须存在：指向不存在的 msg_id 是硬错误', () => {
 // ── #3 同一个 msgid_plat 只入库一次 ────────────────────────────
 test('#3 幂等（实况）：同一 seq 只入库一次；同一 msgid_plat 换个 seq 会进两行，但审计必须报出来', async () => {
   const dir = fixture()
-  const t0 = new Date('2026-10-30T03:00:00Z').getTime()
+  const t0 = new Date(2026, 9, 30, 10, 0, 0).getTime()
   const ev = (seq) => ({
     type: 'user/message',
     seq,
