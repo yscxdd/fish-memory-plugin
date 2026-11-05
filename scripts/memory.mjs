@@ -69,6 +69,7 @@ import { writeReport } from '../lib/report.js'
 import { mergeCheck } from '../lib/mergecheck.js'
 import { buildHandoffFromArchive, clearHandoff, readHandoff } from '../lib/handoff.js'
 import { scopeAnswer } from '../lib/serveapi.js'
+import { voiceMetrics } from '../lib/voicemetrics.js'
 import { readJsonSafe } from '../lib/util.js'
 import { SCOPE_DM_MASTER, isGroupScope, validateScope } from '../lib/scope.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
@@ -611,6 +612,37 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── voice-metrics（她说话的样子 · 八维，只读）──────────────
+/**
+ * v0.60.0。八维借自别人的验收清单，口径按我们的 soul / voice 重写：
+ * 句数、字数、感叹号、语气词、动作、自称、禁用词、总结句。
+ *
+ * **只量"说话"，不量"工作产出"**——档案里她的消息大多是开发报告，
+ * 拿报告量语音只能量出"报告写得长"（实测 99 条里 67 条是 work）。
+ */
+function cmdVoiceMetrics() {
+  needDir()
+  const r = voiceMetrics(dir)
+  if (flags.has('--json')) {
+    console.log(JSON.stringify(r, null, 2))
+    if (!r.ok) process.exitCode = 1
+    return
+  }
+  if (r.empty) {
+    console.log(`（没有数据）${r.reason}`)
+    return
+  }
+  console.log(`她说话的样子：样本 ${r.total} 条 · 排除工作产出 ${r.excluded} 条`)
+  console.log('')
+  for (const row of r.rows) {
+    console.log(`  ${row.ok ? '✓' : '✗'} ${row.name.padEnd(6, '　')} ${row.value}`)
+    if (!row.ok) console.log(`      ${row.hint}`)
+  }
+  console.log('')
+  console.log(r.ok ? '✓ 八维都过' : '✗ 有维度不过（这是基线，别为了变绿去改阈值）')
+  if (!r.ok) process.exitCode = 1
 }
 
 // ── scope（这条记忆属于谁：看默认值 / 判一条渠道消息）──────────
@@ -2155,6 +2187,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'voice-metrics':
+    cmdVoiceMetrics()
     break
   case 'scope':
     cmdScope()
