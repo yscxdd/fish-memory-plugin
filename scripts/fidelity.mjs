@@ -40,6 +40,7 @@ for (const row of r.handoff.rows) {
 }
 console.log('')
 console.log(r.ok ? '✓ 两格都满了' : '✗ 有格子没满（这就是基线，先记下来）')
+// v0.67.1（F8）：基线没满就退 1——以前退 0，于是 CI 抓不到它退步（任务单里写的也是 1）
 console.log('  说明：不调模型、不联网、只读；矛盾那格测的是"新旧两个版本谁排第一 + 冲突有没有被摊开"。')
 
 process.exit(r.ok ? 0 : 1)

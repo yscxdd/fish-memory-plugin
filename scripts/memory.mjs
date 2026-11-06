@@ -30,8 +30,9 @@
  * flags：--dir <path>  --json  --check  --write  --force  --out <dir>
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { atomicWriteText, localDay } from '../lib/util.js'
+import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { applyForget, findDormant, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
 import { redactArchive } from '../lib/archive.js'
@@ -78,6 +79,7 @@ import { SCOPE_DM_MASTER, isGroupScope, validateScope } from '../lib/scope.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
+import { checkArchive } from '../lib/integrity.js'
 import { verifyPackage } from '../lib/verify.js'
 import { writeWakeup } from '../lib/wakeup.js'
 import { summarizeTokenLog } from '../lib/toklog.js'
@@ -628,6 +630,55 @@ function cmdVault() {
  *   memory backup restore <file> <目标目录> [--force] [--key-file <path>]
  *   memory backup prune  --dir <目录> [--keep 7] [--monthly 6]
  */
+/**
+ * verify 用的**真链校验**（v0.67.1，F1）。
+ *
+ * 以前 `backup verify` 只传 key、不传 checkChain，却无条件打印「链完整」——
+ * 那是给人错误的安全感。现在摊到临时目录真跑 `checkArchive`，验不出就抛。
+ */
+function checkChainOf(files) {
+  const tmp = mkdtempSync(join(tmpdir(), 'fmb-verify-'))
+  try {
+    for (const f of files) {
+      const abs = join(tmp, f.name)
+      mkdirSync(dirname(abs), { recursive: true })
+      writeFileSync(abs, f.data)
+    }
+    const r = checkArchive(tmp, { persist: false })
+    if (!r.ok) {
+      const why = [
+        ...(r.broken || []).map((b) => `${b.file}: ${b.reason}`),
+        ...(r.badLines || []).map((b) => `${b.file}: ${b.count} 行读不出来`),
+      ]
+      throw new Error(`链校验失败：${why.slice(0, 3).join('；') || '档案不完整'}`)
+    }
+    return { ok: true, checked: r.checked }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
+/** 恢复后重建索引（失败不影响恢复本身） */
+function rebuildIndexQuiet(libDir) {
+  try {
+    const points = readPointFiles(libDir, '30_points')
+    writeIndex(libDir, buildIndex(points))
+    return { ok: true, points: points.length }
+  } catch (e) {
+    return { ok: false, reason: String(e?.message || e) }
+  }
+}
+
+/** 库的档案链体检（memory verify --dir 用） */
+function chainReport(libDir) {
+  const chain = checkArchive(libDir, { persist: false })
+  const problems = [
+    ...(chain.broken || []).map((b) => `${b.file}: ${b.reason}`),
+    ...(chain.badLines || []).map((b) => `${b.file}: ${b.count} 行读不出来`),
+  ]
+  return { ...chain, problems }
+}
+
 function backupKey() {
   const kf = flagValue('--key-file') || process.env.FISH_MEMORY_BACKUP_KEY_FILE
   if (kf) {
@@ -684,8 +735,14 @@ function cmdBackup() {
     const file = params[1]
     if (!file) fail('用法：memory backup verify <file>')
     // 明文包不需要口令；加密包才要——由 readFmb 自己判并给出人话错误
-    const r = verifyFmb(file, { key: backupKey() })
-    console.log(`✓ 验过：${r.files} 个文件 · 链完整 · ${(r.bytes / 1024).toFixed(0)} KB`)
+    try {
+      // v0.67.1（F1）：以前这里只传 key，checkChain 是 null，却无条件打印「链完整」——
+      // 那三个字在**没验**的时候说出口，等于给人错误的安全感。现在真验。
+      const r = verifyFmb(file, { key: backupKey(), checkChain })
+      console.log(`✓ 验过：${r.files} 个文件 · 链完整（已验）· ${(r.bytes / 1024).toFixed(0)} KB`)
+    } catch (e) {
+      fail(String(e?.message || e))
+    }
     return
   }
 
@@ -693,7 +750,12 @@ function cmdBackup() {
     const file = params[1]
     const dest = params[2]
     if (!file || !dest) fail('用法：memory backup restore <file> <目标目录> [--force]')
-    const r = restoreFmb(file, resolve(dest), { key: backupKey(), force: flags.has('--force') })
+    let r
+    try {
+      r = restoreFmb(file, resolve(dest), { key: backupKey(), force: flags.has('--force'), rebuild: rebuildIndexQuiet })
+    } catch (e) {
+      fail(String(e?.message || e))
+    }
     console.log(`✓ 恢复完成：${r.files} 个文件 → ${dest}`)
     if (r.oldDir) console.log(`  旧库挪到：${r.oldDir}`)
     return
@@ -2264,6 +2326,23 @@ switch (command || 'help') {
     break
   }
   case 'verify': {
+    // v0.67.1（F2）：以前写死验插件包，--dir 完全不看——
+    // 于是 `memory verify --dir Z:\根本不存在` 也会「✓ 自检通过」。
+    // 现在：给了 --dir 就验**那个库**（档案链），没给才验插件包。
+    if (dirIdx >= 0) {
+      if (!existsSync(dir)) {
+        console.error(`✗ 库不存在：${dir}`)
+        process.exit(1)
+      }
+      const chain = chainReport(dir)
+      if (flags.has('--json')) console.log(JSON.stringify({ dir, ...chain }, null, 2))
+      else {
+        console.log(`库：${dir}`)
+        console.log(`  档案 ${chain.checked} 个文件 · 链${chain.ok ? '完整' : '有问题'}`)
+        for (const p of chain.problems.slice(0, 5)) console.error(`  ✗ ${p}`)
+      }
+      process.exit(chain.ok ? 0 : 1)
+    }
     const r = verifyPackage(resolve(import.meta.dirname, '..'))
     if (flags.has('--json')) console.log(JSON.stringify(r, null, 2))
     else {

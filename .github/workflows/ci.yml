@@ -50,7 +50,7 @@ jobs:
       # 三个时区：v0.50.0 那次 CI 连红三次就是时区写死的（v0.52.2）
       - name: timezone sweep
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == 22 }}
-        run: node scripts/test-tz.mjs
+        run: node scripts/tz-check.mjs
 
       # 难题组：会输的尺子（v0.50.0）。当前 70%，退回 50% 以下直接失败
       - name: hard gold set

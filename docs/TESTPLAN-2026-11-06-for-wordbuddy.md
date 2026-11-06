@@ -164,7 +164,7 @@ v0.65 有个真 bug：**他用带英文词的话说心情，被当成"工作产�
 
 ```powershell
 & $node --test                      # 期望 799 pass / 0 fail
-& $node scripts/test-tz.mjs         # 期望三个时区都是 799/799
+& $node scripts/tz-check.mjs         # 期望三个时区都是 799/799
 & $node scripts/memory.mjs verify
 & $node scripts/memory.mjs hostcheck
 & $node scripts/memory.mjs gold

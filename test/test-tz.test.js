@@ -4,14 +4,14 @@
 /**
  * 三时区测试跑的解析器（v0.52.2）。
  *
- * 为什么单测这个：`test-tz.mjs` 自己要是把"3 条新失败"读成"0 条"，
+ * 为什么单测这个：`tz-check.mjs` 自己要是把"3 条新失败"读成"0 条"，
  * 那它比没有更糟——它会给出虚假的绿。
  */
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { KNOWN, ZONES, parseTestOutput } from '../scripts/test-tz.mjs'
+import { KNOWN, ZONES, parseTestOutput } from '../scripts/tz-check.mjs'
 
 const SAMPLE = `
 ℹ tests 645

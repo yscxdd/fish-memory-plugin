@@ -59,7 +59,10 @@ export function parseTestOutput(text) {
 }
 
 function runZone(zone) {
-  const r = spawnSync(process.execPath, ['--test'], {
+  // v0.67.1（F3）：stdout 被管道接走时 Node 会切到 TAP reporter（`# tests 799`），
+  // 而这里的 parser 只认 spec 的 `ℹ tests 799` → 解析出 0/0 却打 ✓。
+  // **一个门禁在测不到东西的时候必须红。** 现在显式指定 reporter。
+  const r = spawnSync(process.execPath, ['--test', '--test-reporter=spec'], {
     cwd: ROOT,
     encoding: 'utf8',
     timeout: 10 * 60_000,
@@ -77,7 +80,9 @@ function main() {
 
   const results = []
   for (const zone of list) {
-    const r = runZone(zone)
+    let r = runZone(zone)
+    // v0.67.1（F3）：0 条也算失败——解析器对着空输出说自己"没有新失败"，是假绿
+    if (!(r.tests > 0)) r = { ...r, failed: [...(r.failed || []), '(解析到 0 条用例——reporter 或解析器坏了)'] }
     const known = new Set(KNOWN[zone] || [])
     const fresh = r.failed.filter((f) => !known.has(f))
     const stale = r.failed.filter((f) => known.has(f))
@@ -105,4 +110,5 @@ function main() {
   process.exit(results.every((r) => r.ok) ? 0 : 1)
 }
 
-if (process.argv[1] && process.argv[1].endsWith('test-tz.mjs')) main()
+// 防御：就算哪天又被丢进测试目录，也不要在测试进程里递归跑
+if (process.argv[1] && process.argv[1].endsWith('tz-check.mjs') && !process.env.NODE_TEST_CONTEXT) main()
