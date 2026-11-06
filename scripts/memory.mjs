@@ -32,6 +32,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { atomicWriteText, localDay } from '../lib/util.js'
+import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { applyForget, findDormant, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
@@ -728,6 +729,29 @@ function cmdBackup() {
         console.log(`  ${f} · 读不出来（${e?.message || e}）`)
       }
     }
+
+    // v0.67.2（B4）：`--check` 回答一个问题——**最近一份还新吗、还读得出来吗**。
+    // 同步盘的失败是静默的，所以这条要能进 cron。
+    if (flags.has('--check')) {
+      const newest = files[files.length - 1]
+      const day = (newest.match(/(\d{8})/) || [])[1]
+      const madeAt = new Date(Number(day.slice(0, 4)), Number(day.slice(4, 6)) - 1, Number(day.slice(6, 8)))
+      const hours = Math.round((Date.now() - madeAt.getTime()) / 3600_000)
+      let ok = true
+      try {
+        readFmbHeader(join(d, newest))
+      } catch (e) {
+        console.log(`  ✗ 最新一份读不出来：${e?.message || e}`)
+        ok = false
+      }
+      if (hours > 48) {
+        console.log(`  ✗ 最新一份是 ${hours} 小时前（超过 48h 没备份了）`)
+        ok = false
+      } else if (ok) {
+        console.log(`  ✓ 最新一份 ${hours} 小时前，头部可读`)
+      }
+      if (!ok) process.exitCode = 1
+    }
     return
   }
 
@@ -738,8 +762,18 @@ function cmdBackup() {
     try {
       // v0.67.1（F1）：以前这里只传 key，checkChain 是 null，却无条件打印「链完整」——
       // 那三个字在**没验**的时候说出口，等于给人错误的安全感。现在真验。
-      const r = verifyFmb(file, { key: backupKey(), checkChain })
+      const r = verifyFmb(file, { key: backupKey(), checkChain: checkChainOf })
       console.log(`✓ 验过：${r.files} 个文件 · 链完整（已验）· ${(r.bytes / 1024).toFixed(0)} KB`)
+      // v0.67.2（B4）：同步盘的失败是**静默的**（传了一半、名字带 (1)、体积 0）。
+      // 所以远端那份必须能和本地记录对上哈希，否则"我有备份"只是信仰。
+      const expect = String(flagValue('--expect-sha256') || '').trim().toLowerCase()
+      if (expect) {
+        const actual = createHash('sha256').update(readFileSync(file)).digest('hex')
+        if (actual !== expect) {
+          fail(`远端文件与本地记录不一致：\n  期望 ${expect}\n  实际 ${actual}\n  （网盘截断/改名/传输不完整，最典型的表现）`)
+        }
+        console.log('  ✓ sha256 与本地记录一致')
+      }
     } catch (e) {
       fail(String(e?.message || e))
     }
