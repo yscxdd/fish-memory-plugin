@@ -43,7 +43,7 @@ function fixture() {
   return dir
 }
 
-function seedArchive(dir, rows) {
+function seedArchive(dir, rows, { sessions = ['s1', 's2'] } = {}) {
   const lines = rows.map((r, i) =>
     JSON.stringify({
       id: r.id || `msg-${i + 1}`,
@@ -54,7 +54,8 @@ function seedArchive(dir, rows) {
       role: r.role,
       source_kind: r.role,
       text: r.text,
-      session: 's1',
+      // v0.65.0（S5）：默认跨两个会话轮流
+      session: r.session || sessions[i % sessions.length],
     }),
   )
   writeFileSync(join(dir, '10_archive/messages/2026-11-01.jsonl'), lines.join('\n') + '\n', 'utf8')

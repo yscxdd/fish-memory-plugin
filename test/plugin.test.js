@@ -1007,6 +1007,35 @@ test('压力到 80%：注入里明说"该开新会话"，并先把交接包写�
   ctx.dispose()
 })
 
+test('情绪闸按内容：工作句不产生情绪事件，聊天句才产生（v0.65.0）', () => {
+  // 同一个会话里既有调试也有真事 —— 所以闸门看的是**这一句**，不是会话模式。
+  const dir = makeMemory()
+  const ctx = fakeCtx()
+  apply(ctx, { memoryDir: dir })
+  const agent = withTokenMeter(ctx, 100)
+  agent.id = 'emo-1'
+  agent.session.header.cwd = dir
+
+  // 工作句**完全不会**创建 emotion.json（这正是闸门生效的样子），所以读不到就算 0
+  const readEmo = () => {
+    const f = join(dir, '20_state/emotion.json')
+    return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : { turns: 0 }
+  }
+
+  // ① 工作句：不动
+  ctx.emit('agent/inbox/inserted', { agent, message: userMsgOf('m-work', '这个报错怎么修，我先跑一遍测试') })
+  const afterWork = readEmo().turns
+  assert.equal(afterWork, 0, '工作句不该产生情绪事件')
+
+  // ② 聊天句：动
+  ctx.emit('agent/inbox/inserted', { agent, message: userMsgOf('m-chat', '我今天真的很难受') })
+  assert.ok(readEmo().turns > afterWork, '聊天句该产生情绪事件')
+
+  // ③ 被挡下的要留痕
+  assert.ok(existsSync(join(dir, '50_log/emotion-skip.log')), '跳过要记一行，方便查"她今天怎么没情绪"')
+  ctx.dispose()
+})
+
 test('压力 72%：只提醒去压，不喊换窗（阈值分开的意义）', () => {
   const dir = makeMemory()
   const ctx = fakeCtx()

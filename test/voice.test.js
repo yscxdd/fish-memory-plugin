@@ -42,7 +42,7 @@ function fixture() {
   return dir
 }
 
-function seedMessages(dir, rows) {
+function seedMessages(dir, rows, { sessions = ['s1', 's2'] } = {}) {
   const file = join(dir, '10_archive/messages/2026-11-01.jsonl')
   const lines = rows.map((r, i) =>
     JSON.stringify({
@@ -54,7 +54,8 @@ function seedMessages(dir, rows) {
       role: r.role,
       source_kind: r.role,
       text: r.text,
-      session: 's1',
+      // v0.65.0（S5）：默认跨两个会话轮流——"重复两遍"在真实库里该是两次不同的对话
+      session: r.session || sessions[i % sessions.length],
       msgid_plat: r.id || `p-${i}`,
     }),
   )
