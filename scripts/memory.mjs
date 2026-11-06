@@ -30,7 +30,7 @@
  * flags：--dir <path>  --json  --check  --write  --force  --out <dir>
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { atomicWriteText, localDay } from '../lib/util.js'
 import { basename, dirname, join, resolve } from 'node:path'
 import { applyForget, findDormant, migrateLegacyDormant, planForget, revivePoint } from '../lib/forget.js'
@@ -71,6 +71,8 @@ import { buildHandoffFromArchive, clearHandoff, readHandoff } from '../lib/hando
 import { scopeAnswer } from '../lib/serveapi.js'
 import { voiceMetrics } from '../lib/voicemetrics.js'
 import { renderToday, todayView } from '../lib/today.js'
+import { exportFmb, pruneFmb, readFmbHeader, verifyFmb } from '../lib/fmb.js'
+import { restoreFmb } from '../lib/restore.js'
 import { readJsonSafe } from '../lib/util.js'
 import { SCOPE_DM_MASTER, isGroupScope, validateScope } from '../lib/scope.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
@@ -613,6 +615,102 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── backup（单文件包：导出 / 看 / 验 / 恢复 / 清）──────────────────
+/**
+ * v0.67.0。**同步盘只该看见"一个写完的文件"**——目录会边写边传、还会产生冲突副本，
+ * 而档案的 hash 链最怕分叉。
+ *
+ *   memory backup export [--out <file>] [--key-file <path>] [--encrypt]
+ *   memory backup list   [--dir <同步盘目录>]
+ *   memory backup verify <file> [--key-file <path>]
+ *   memory backup restore <file> <目标目录> [--force] [--key-file <path>]
+ *   memory backup prune  --dir <目录> [--keep 7] [--monthly 6]
+ */
+function backupKey() {
+  const kf = flagValue('--key-file') || process.env.FISH_MEMORY_BACKUP_KEY_FILE
+  if (kf) {
+    try {
+      return readFileSync(kf, 'utf8').trim()
+    } catch (e) {
+      fail(`读不到口令文件：${kf}（${e?.message || e}）`)
+    }
+  }
+  return process.env.FISH_MEMORY_BACKUP_PASSPHRASE || null
+}
+
+function cmdBackup() {
+  const sub = params[0]
+  if (!sub) fail('用法：memory backup export|list|verify|restore|prune')
+
+  if (sub === 'export') {
+    needDir()
+    const encrypt = flags.has('--encrypt')
+    let key = encrypt ? backupKey() : null
+    if (encrypt && !key) {
+      fail('--encrypt 要给口令：--key-file <路径> 或 FISH_MEMORY_BACKUP_PASSPHRASE（**绝不静默降级为明文**）')
+    }
+    const out = flagValue('--out')
+    const r = exportFmb(dir, { outFile: out, key })
+    console.log(`✓ 导出：${r.file}`)
+    console.log(`  ${r.files} 个文件 · ${(r.bytes / 1024).toFixed(0)} KB · ${r.encrypted ? '已加密（aes-256-gcm）' : '明文'}`)
+    console.log(`  sha256 ${r.digest}`)
+    if (r.encrypted) console.log('  提示：口令别存进这个库（等于把钥匙和锁放一个包）')
+    return
+  }
+
+  if (sub === 'list') {
+    const d = flagValue('--dir') || dir
+    if (!existsSync(d)) fail(`目录不存在：${d}`)
+    const files = readdirSync(d).filter((f) => /^fish-memory-\d{8}\.fmb$/.test(f)).sort()
+    if (!files.length) {
+      console.log('（这个目录里没有备份包）')
+      return
+    }
+    for (const f of files) {
+      try {
+        const { head } = readFmbHeader(join(d, f))
+        const size = (statSync(join(d, f)).size / 1024).toFixed(0)
+        console.log(`  ${f} · ${size} KB · ${head.files} 个文件 · ${head.enc ? '加密' : '明文'}`)
+      } catch (e) {
+        console.log(`  ${f} · 读不出来（${e?.message || e}）`)
+      }
+    }
+    return
+  }
+
+  if (sub === 'verify') {
+    const file = params[1]
+    if (!file) fail('用法：memory backup verify <file>')
+    // 明文包不需要口令；加密包才要——由 readFmb 自己判并给出人话错误
+    const r = verifyFmb(file, { key: backupKey() })
+    console.log(`✓ 验过：${r.files} 个文件 · 链完整 · ${(r.bytes / 1024).toFixed(0)} KB`)
+    return
+  }
+
+  if (sub === 'restore') {
+    const file = params[1]
+    const dest = params[2]
+    if (!file || !dest) fail('用法：memory backup restore <file> <目标目录> [--force]')
+    const r = restoreFmb(file, resolve(dest), { key: backupKey(), force: flags.has('--force') })
+    console.log(`✓ 恢复完成：${r.files} 个文件 → ${dest}`)
+    if (r.oldDir) console.log(`  旧库挪到：${r.oldDir}`)
+    return
+  }
+
+  if (sub === 'prune') {
+    const d = flagValue('--dir')
+    if (!d) fail('用法：memory backup prune --dir <同步盘目录> [--keep 7] [--monthly 6]')
+    const keep = Number(flagValue('--keep') || 7)
+    const monthly = Number(flagValue('--monthly') || 6)
+    const r = pruneFmb(resolve(d), { keep, monthly, dry: flags.has('--dry') })
+    console.log(`  删掉 ${r.removed.length} 份，留下 ${r.kept.length} 份`)
+    for (const f of r.removed) console.log('    - ' + f)
+    return
+  }
+
+  fail(`不认识的子命令：${sub}`)
 }
 
 // ── today（她的今天：一屏，只读）──────────────────────────────
@@ -2207,6 +2305,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'backup':
+    cmdBackup()
     break
   case 'today':
     cmdToday()
