@@ -82,7 +82,8 @@ test('refute：状态变 superseded，理由与时间写进 front matter', async
   const raw = read(dir, id)
   assert.match(raw, /status: superseded/)
   assert.match(raw, /refuted_reason: "他其实怕一个人"/)
-  assert.match(raw, /refuted_at: 2026-11-07T14:00:00.000Z/)
+  // 用 NOW 算出来的 ISO，别写死——写死就是「+08:00 能过、CI(UTC) 红」那种假绿的反面
+  assert.match(raw, new RegExp(`refuted_at: ${NOW.toISOString().replace(/[.]/g, '\\.')}`))
 })
 
 test('refute：没有理由直接拒（"错了"必须有理由）', async () => {
