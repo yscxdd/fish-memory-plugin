@@ -1372,6 +1372,61 @@ function cmdEntity(sub, args) {
   fail('用法：memory entity <add|list|rebuild|show> ...')
 }
 
+// ── near-miss（差一点就想起的查询）────────────────────────────────
+/**
+ * R7（v0.73.0）。公开文章点破过一件事：
+ * **「忘了」通常等于「没检索到」**——换个说法再问就出来了。
+ *
+ * `50_log/retrieval.log` 从这一版开始记 `nearMiss`（最好的那条没过线的分）。
+ * 这个命令把 0.7–阈值之间的查询列出来，按出现次数排——补别名/加同义词最直接的清单。
+ */
+function cmdNearMiss() {
+  needDir()
+  const file = join(dir, '50_log', 'retrieval.log')
+  if (!existsSync(file)) {
+    console.log('（还没有检索日志：跑几轮对话再来）')
+    return
+  }
+  const rows = []
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    if (!line.trim()) continue
+    try {
+      rows.push(JSON.parse(line))
+    } catch {
+      /* 坏行跳过 */
+    }
+  }
+  const lo = Number(flagValue('--above') || 0.7)
+  const hits = rows.filter((r) => r.nearMiss && r.nearMiss.score >= lo)
+  if (!hits.length) {
+    console.log(`✓ 没有差一点的查询（看过 ${rows.length} 条日志，门槛 ${lo}）`)
+    if (!rows.some((r) => 'nearMiss' in r)) {
+      console.log('  注：这一版之前的日志没有 nearMiss 字段，等新的记录产生。')
+    }
+    return
+  }
+  const byQuery = new Map()
+  for (const r of hits) {
+    const key = String(r.query || '').trim().slice(0, 40)
+    if (!key) continue
+    const cur = byQuery.get(key) || { n: 0, best: 0, id: null, last: null }
+    cur.n += 1
+    if (r.nearMiss.score > cur.best) {
+      cur.best = r.nearMiss.score
+      cur.id = r.nearMiss.id
+    }
+    cur.last = r.at
+    byQuery.set(key, cur)
+  }
+  const list = [...byQuery].sort((a, b) => b[1].n - a[1].n || b[1].best - a[1].best)
+  console.log(`差一点的查询：${list.length} 个（门槛 ${lo}）`)
+  for (const [q, v] of list.slice(0, 15)) {
+    console.log(`  ×${v.n}  ${v.best}  「${q}」${v.id ? ` → 最接近 ${v.id}` : ''}`)
+  }
+  console.log('')
+  console.log('  这些就是该补别名/同义字的入口：memory alias add <name> --aliases ...')
+}
+
 // ── timeline（时间轴）──────────────────────────────────────────
 /** v0.40.0：看"现在 / 过去 / 计划"各有多少，顺便列计划的。 */
 function cmdTimeline() {
@@ -2573,6 +2628,9 @@ switch (command || 'help') {
     break
   case 'entity':
     cmdEntity(params[0], params.slice(1))
+    break
+  case 'near-miss':
+    cmdNearMiss()
     break
   case 'timeline':
     cmdTimeline()
