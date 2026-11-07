@@ -75,6 +75,8 @@ import { voiceMetrics } from '../lib/voicemetrics.js'
 import { renderToday, todayView } from '../lib/today.js'
 import { exportFmb, pruneFmb, readFmbHeader, verifyFmb } from '../lib/fmb.js'
 import { restoreFmb } from '../lib/restore.js'
+import { refutePoint, refutedWithoutReason } from '../lib/refute.js'
+import { evidenceOf, renderEvidence } from '../lib/evidence.js'
 import { TIDY_EVERY, markTidyDone, tidyPack, tidyStatus } from '../lib/tidy.js'
 import { readJsonSafe } from '../lib/util.js'
 import { SCOPE_DM_MASTER, isGroupScope, validateScope } from '../lib/scope.js'
@@ -619,6 +621,37 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── refute（这条结论错了）/ evidence（一键查证）────────────────────
+/**
+ * v0.69.0（T5 + T6）。"能查证、能改错"是视频第 5 条建议，
+ * 也是我们最强项（source 硬约束）缺的两个动作。
+ *
+ *   memory refute <id> --reason "..." [--by <新点id>]
+ *   memory evidence <id> [--json]
+ */
+function cmdRefute() {
+  needDir()
+  const id = params[0]
+  const reason = flagValue('--reason')
+  if (!id) fail('用法：memory refute <id> --reason "为什么错" [--by <新点id>]')
+  const r = refutePoint(dir, id, { reason, by: flagValue('--by') || null })
+  if (!r.ok) fail(r.reason)
+  console.log(`✓ 已推翻：${r.id}`)
+  console.log(`  理由：${r.reason}`)
+  if (r.by) console.log(`  新点：${r.by}${r.linked ? '（已在新点上记 contradicts）' : '（没连上新点，检查 id）'}`)
+  console.log('  → 它仍然会注入，但带 [已推翻] 标记；痕迹进了 50_log/erasure.log')
+}
+
+function cmdEvidence() {
+  needDir()
+  const id = params[0]
+  if (!id) fail('用法：memory evidence <id>')
+  const r = evidenceOf(dir, id)
+  if (flags.has('--json')) console.log(JSON.stringify(r, null, 2))
+  else console.log(renderEvidence(r))
+  if (!r.ok) process.exitCode = 1
 }
 
 // ── tidy（整理机节拍：看水位 / 备料 / 记完成）──────────────────────
@@ -2458,6 +2491,12 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'refute':
+    cmdRefute()
+    break
+  case 'evidence':
+    cmdEvidence()
     break
   case 'tidy':
     cmdTidy()
