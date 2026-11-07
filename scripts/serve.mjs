@@ -84,8 +84,36 @@ function contextFor(session, q, forceMode, scope = 'dm:master') {
   return { text, mode, rendered: r.rendered, tokens: estTokens(text) }
 }
 
+/**
+ * A4（v0.71.0）：这个服务原来对**本机任何进程**都敞开。
+ *
+ * 三件事一起做才有意义：
+ *   ① `FISH_MEMORY_TOKEN` 配了就要求 `Authorization: Bearer <token>`（不配保持现在的手感）；
+ *   ② `Host` 必须是 127.0.0.1 / localhost —— 只绑回环**挡不住 DNS rebinding**：
+ *      恶意网页把域名解析到 127.0.0.1，浏览器就能打这个接口（/outcome 用 text/plain 是简单请求，不预检）；
+ *   ③ body 上限 64KB + 自造事件字段（`event` 不许被覆盖）。
+ */
+const TOKEN = process.env.FISH_MEMORY_TOKEN || ''
+const MAX_BODY = 64 * 1024
+const OK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
+
+function hostAllowed(req) {
+  const h = String(req.headers.host || '')
+  const name = h.replace(/:\d+$/, '').toLowerCase()
+  return OK_HOSTS.has(name)
+}
+
+function authAllowed(req) {
+  if (!TOKEN) return true
+  const got = String(req.headers.authorization || '')
+  return got === `Bearer ${TOKEN}`
+}
+
 const server = createServer((req, res) => {
   try {
+    // A4：先挡 Host（DNS rebinding），再挡 token（可选）
+    if (!hostAllowed(req)) return json(res, 403, { error: 'forbidden host' })
+    if (!authAllowed(req)) return json(res, 401, { error: 'unauthorized' })
     const url = new URL(req.url, `http://127.0.0.1:${port}`)
     if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true, dir })
     if (req.method === 'GET' && url.pathname === '/status') return json(res, 200, { ...statusOf(dir), scope: process.env.FISH_MEMORY_SCOPE || 'dm:master' })
@@ -121,15 +149,30 @@ const server = createServer((req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/outcome') {
       let body = ''
-      req.on('data', (c) => (body += c))
+      let tooBig = false
+      req.on('data', (c) => {
+        if (tooBig) return
+        body += c
+        // A4：没有上限的话，本机一个循环就能把内存撑爆
+        if (body.length > MAX_BODY) {
+          tooBig = true
+          body = ''
+          json(res, 413, { error: `body 太大（上限 ${MAX_BODY} 字节）` })
+          // 丢掉剩下的数据但不掐连接：直接 destroy 会先断在响应 flush 之前，
+          // 客户端看到的是 ECONNRESET，而不是我们要传达的 413。
+          req.resume()
+        }
+      })
       req.on('end', () => {
+        if (tooBig) return
         try {
           const o = JSON.parse(body || '{}')
           if (!o.ability) return json(res, 400, { error: 'ability is required' })
           mkdirSync(join(dir, '50_log'), { recursive: true })
           appendFileSync(
             join(dir, '50_log', 'ability.log'),
-            JSON.stringify({ at: new Date().toISOString(), event: 'outcome', ...o }) + '\n',
+            // A4：`...o` 放前面——以前 o.event 能覆盖掉 event 字段，账本可以被污染成任意 event
+            JSON.stringify({ ...o, at: new Date().toISOString(), event: 'outcome' }) + '\n',
             'utf8',
           )
           json(res, 200, { ok: true })

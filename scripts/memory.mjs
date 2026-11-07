@@ -79,7 +79,7 @@ import { refutePoint, refutedWithoutReason } from '../lib/refute.js'
 import { evidenceOf, renderEvidence } from '../lib/evidence.js'
 import { TIDY_EVERY, markTidyDone, tidyPack, tidyStatus } from '../lib/tidy.js'
 import { readJsonSafe } from '../lib/util.js'
-import { SCOPE_DM_MASTER, isGroupScope, validateScope } from '../lib/scope.js'
+import { SCOPE_DM_MASTER, isGroupScope, scopeOf, stampScope, validateScope, visible } from '../lib/scope.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
 import { DEFAULT_BUDGET, INJECT_HARD_CAP, injectBudgetTotal } from '../lib/render.js'
 import { initMemory } from '../lib/scaffold.js'
@@ -944,6 +944,33 @@ function cmdVoiceMetrics() {
  *   memory scope --check group:123                 校验写法
  */
 function cmdScope() {
+  // A3（v0.71.0）：隔离以前只做了读侧。补写侧——
+  // 没有 scope 的点缺省按 global 处理，而 global 对所有作用域可见；
+  // 接群那天，私聊点的**标题**就会跟着索引行进群。
+  if (params[0] === 'stamp') {
+    needDir()
+    const fallback = String(flagValue('--default') || SCOPE_DM_MASTER)
+    const checked = validateScope(fallback)
+    if (!checked.ok) fail(`--default 不合法：${fallback}（${checked.reason || checked.error || ''}）`)
+    const dry = flags.has('--dry')
+    const points = readPointFiles(dir, '30_points')
+    const missing = points.filter((p) => !p.scope)
+    if (!missing.length) {
+      console.log(`✓ 全部 ${points.length} 个点都有 scope，不用补`)
+      return
+    }
+    if (dry) {
+      console.log(`  要补 ${missing.length} / ${points.length} 个点 → ${checked.scope}`)
+      for (const p of missing.slice(0, 10)) console.log(`    · ${p.id} ${p.title || ''}`)
+      if (missing.length > 10) console.log(`    …（还有 ${missing.length - 10} 个）`)
+      console.log('  去掉 --dry 才会真写')
+      return
+    }
+    const r = stampScope(dir, checked.scope)
+    console.log(`✓ 补了 ${r.stamped} 个点 → ${checked.scope}（跳过已有 scope 的 ${r.skipped} 个）`)
+    console.log(`  日志：${r.log}（每个点一行，含改动前后指纹）`)
+    return
+  }
   const check = flagValue('--check')
   if (check) {
     const v = validateScope(check)
@@ -974,7 +1001,11 @@ function cmdScope() {
   const configured = cfgScope || SCOPE_DM_MASTER
   const v = validateScope(configured)
   console.log(`默认作用域：${configured}${v.ok ? '' : '  ← 配置里这个值不合法'}`)
-  console.log('  · 缺省是主人私聊（dm:master）；历史点没有 scope 的按 global 处理，不用迁移。')
+  console.log('  · 缺省是主人私聊（dm:master）。')
+  // v0.71.0（A3）：以前这里写"历史点没有 scope 的按 global 处理，不用迁移"——
+  // 只有私聊时那是对的，**接了群就是错的**：global 对所有作用域可见，标题会跟着进群。
+  console.log('  ⚠ 没有 scope 的点按 global 处理，对**任何**作用域都可见（含群）。接群前先补齐：')
+  console.log('      memory scope stamp --default dm:master --dry')
   console.log('  · 通道侧要判"这条消息属于谁"：memory scope --channel group --group <id> --sender <id> --masters <id> --homes <id>')
 }
 
