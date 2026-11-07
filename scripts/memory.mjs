@@ -75,6 +75,7 @@ import { voiceMetrics } from '../lib/voicemetrics.js'
 import { renderToday, todayView } from '../lib/today.js'
 import { exportFmb, pruneFmb, readFmbHeader, verifyFmb } from '../lib/fmb.js'
 import { restoreFmb } from '../lib/restore.js'
+import { TIDY_EVERY, markTidyDone, tidyPack, tidyStatus } from '../lib/tidy.js'
 import { readJsonSafe } from '../lib/util.js'
 import { SCOPE_DM_MASTER, isGroupScope, validateScope } from '../lib/scope.js'
 import { renderRecall, searchArchive, searchPoints } from '../lib/recall.js'
@@ -618,6 +619,45 @@ function cmdVault() {
   console.log('用法：Obsidian → 打开文件夹 → 选 ' + dir)
   console.log('      把 20_index/index.md 设成首页；Ctrl/Cmd+G 看图谱。')
   console.log('注意：这些是派生视图，可重建；改记忆请走 40_pending/ + promote。')
+}
+
+// ── tidy（整理机节拍：看水位 / 备料 / 记完成）──────────────────────
+/**
+ * v0.68.0（T1）。视频里那套是"每 35 条整理一次"的机器；
+ * 我们**不做机器**——代码永不自动写记忆点——只做**提醒 + 备料**。
+ *
+ *   memory tidy            看水位：还差多少条到线
+ *   memory tidy --pack     现在就备料（不等到线）
+ *   memory tidy --done     整理完了，水位前移（唯一会前移的地方）
+ */
+function cmdTidy() {
+  needDir()
+  const every = Number(flagValue('--every') || TIDY_EVERY)
+
+  if (flags.has('--done')) {
+    const r = markTidyDone(dir)
+    console.log(`✓ 水位前移到 ${r.rows} 条（这次整理了 ${r.tidiedSince} 条）`)
+    return
+  }
+
+  if (flags.has('--pack')) {
+    const r = tidyPack(dir, { every: flags.has('--force') ? 0 : every })
+    if (!r.ok) {
+      console.log(`还没到线（差 ${every - tidyStatus(dir, { every }).since} 条）。想现在就备料加 --force`)
+      return
+    }
+    console.log(`✓ 材料包：${r.at}`)
+    console.log(`  ${r.since} 条原文 · ${r.drafts} 条草稿 · ${r.points} 个新点`)
+    return
+  }
+
+  const s = tidyStatus(dir, { every })
+  console.log(`档案 ${s.rows} 条 · 上次整理时 ${s.lastTidyRows} 条 · 之后新增 ${s.since} 条`)
+  console.log(s.due ? `  → 该整理了（≥ ${every}），注入里会带一行提醒` : `  → 还差 ${every - s.since} 条到线`)
+  if (s.lastTidyAt) console.log(`  上次整理：${s.lastTidyAt}`)
+  console.log('')
+  console.log('  memory tidy --pack   现在就备料（原文摘录 + 草稿清单 + 新点）')
+  console.log('  memory tidy --done   整理完了，水位前移')
 }
 
 // ── backup（单文件包：导出 / 看 / 验 / 恢复 / 清）──────────────────
@@ -2418,6 +2458,9 @@ switch (command || 'help') {
     break
   case 'vault':
     cmdVault()
+    break
+  case 'tidy':
+    cmdTidy()
     break
   case 'backup':
     cmdBackup()
