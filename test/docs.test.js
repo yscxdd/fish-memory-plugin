@@ -54,15 +54,16 @@ test('README 的功能表提到素材源与 stats；版本号与 package.json �
   assert.ok(readme.includes(`${pkg.version}`), 'README 里要有当前版本号')
 })
 
-test('契约里三条硬说法与代码一致（契约不在仓库里时跳过）', (t) => {
-  // 契约是工作区文档，不随插件发布；CI 上没有这个文件，跳过而不是红
-  const url = new URL('../../大肥鱼-插件接口契约-v1.0.md', import.meta.url)
+test('契约里三条硬说法与代码一致', (t) => {
+  // v0.74.0（A13）：契约已经随插件发布（docs/CONTRACT-v1.0-plugin-interface.md）。
+  // 以前它在工作区外，于是这一条**每次发布都 skip**——测不到等于没测。
+  const url = new URL('../docs/CONTRACT-v1.0-plugin-interface.md', import.meta.url)
   let contract = ''
   try {
     contract = readFileSync(url, 'utf8')
   } catch {
-    t.skip('契约文件不在（CI/单独 clone 的情况）')
-    return
+    // 它现在就在仓库里：读不到 = 真的坏了，不许 skip
+    assert.fail('契约文件读不到：docs/CONTRACT-v1.0-plugin-interface.md')
   }
   assert.match(contract, /7\.5\.1 人格修订提案/, '契约要有 §7.5.1')
   assert.match(contract, /pin: hard/, '契约要写 pin 两档')

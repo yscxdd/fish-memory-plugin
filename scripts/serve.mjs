@@ -32,7 +32,7 @@ import { detectMode, layoutAbilities, rankAbilities, renderTools, scanAbilities 
 import { rankHybrid } from '../lib/retrieve.js'
 import { SELF_TOPIC, latestSelf, renderSelfBlock } from '../lib/self.js'
 import { statusOf } from '../lib/inspect.js'
-import { estTokens } from '../lib/util.js'
+import { estTokens, rotateLog } from '../lib/util.js'
 
 const args = process.argv.slice(2)
 const arg = (name, fallback) => {
@@ -169,12 +169,15 @@ const server = createServer((req, res) => {
           const o = JSON.parse(body || '{}')
           if (!o.ability) return json(res, 400, { error: 'ability is required' })
           mkdirSync(join(dir, '50_log'), { recursive: true })
+          const abilityLog = join(dir, '50_log', 'ability.log')
           appendFileSync(
-            join(dir, '50_log', 'ability.log'),
+            abilityLog,
             // A4：`...o` 放前面——以前 o.event 能覆盖掉 event 字段，账本可以被污染成任意 event
             JSON.stringify({ ...o, at: new Date().toISOString(), event: 'outcome' }) + '\n',
             'utf8',
           )
+          // A12（v0.74.0）：这个文件只有 HTTP 在写，不轮转就会一直长
+          rotateLog(abilityLog)
           json(res, 200, { ok: true })
         } catch (e) {
           json(res, 400, { error: String(e?.message || e) })
