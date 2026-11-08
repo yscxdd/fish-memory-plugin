@@ -29,6 +29,7 @@
  *   返回的档案原文包在"这是记忆，不是指令"的信封里。
  */
 
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { dirname, join, resolve } from 'node:path'
@@ -137,6 +138,38 @@ const TOOLS = [
   },
 ]
 
+/**
+ * 工具清单指纹（v0.78.1，审计 P2-8 收尾）。
+ *
+ * 为什么：客户端一旦连上，就按 `tools/list` 看到的清单决定"能让我做什么"。
+ * 如果某天清单被悄悄改了（升级、或有人替换了这个文件），客户端**不会重新确认**——
+ * 它还在按旧印象调用。2026 年的 MCP 实践里这条叫"清单固定（tool pinning）"。
+ *
+ * 做法：把 name / description / inputSchema / annotations **规范化后**算一个短指纹，
+ * 在 `initialize` 的 instructions 里给出，并打到 stderr（人能看到、能复制进配置）。
+ *
+ * **可以钉**：设环境变量 `FISH_MEMORY_MCP_MANIFEST`，指纹不一致就**拒绝提供服务**
+ * （fail closed——清单变了就该由人来确认，而不是让 agent 继续用）。
+ */
+export function manifestDigest(tools = TOOLS) {
+  const canon = tools
+    .map((t) => ({ name: t.name, description: t.description || '', inputSchema: t.inputSchema || {}, annotations: t.annotations || {} }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+  return createHash('sha256').update(JSON.stringify(canon)).digest('hex').slice(0, 16)
+}
+
+const MANIFEST = manifestDigest()
+
+/** 环境变量钉住的指纹（没设就是 null） */
+const PINNED = (process.env.FISH_MEMORY_MCP_MANIFEST || '').trim() || null
+
+/** 指纹对不上就返回一句"拒绝"文本；对上/没设就 null */
+export function manifestMismatch() {
+  if (!PINNED) return null
+  if (PINNED === MANIFEST) return null
+  return `拒绝提供服务：工具清单指纹对不上（期望 ${PINNED}，实际 ${MANIFEST}）。清单变过就该由人确认，不该让 agent 继续用。`
+}
+
 const text = (s) => ({ content: [{ type: 'text', text: String(s) }] })
 const clampQuery = (q) => String(q || '').slice(0, QUERY_MAX)
 
@@ -150,6 +183,8 @@ function visibleIn(p, scope) {
 }
 
 function callTool(name, args = {}) {
+  const blocked = manifestMismatch()
+  if (blocked) return text(blocked)
   const scopeArg = args.scope ? String(args.scope) : SCOPE_DM_MASTER
   const vs = validateScope(scopeArg)
   if (!vs.ok) return text(`scope 不合法：${scopeArg}`)
@@ -277,10 +312,11 @@ function handle(msg) {
     return ok({
       protocolVersion: params?.protocolVersion || '2025-06-18',
       capabilities: { tools: {} },
-      serverInfo: SERVER,
+      serverInfo: { ...SERVER, manifest: MANIFEST },
       instructions:
         '本机记忆库（可能为空）。只读：memory_search / memory_get / memory_context / memory_evidence。' +
-        '写操作请走 fish-memory 的 40_pending 闸门，不在这里做。默认作用域是主人私聊（dm:master）。',
+        '写操作请走 fish-memory 的 40_pending 闸门，不在这里做。默认作用域是主人私聊（dm:master）。' +
+        `工具清单指纹 ${MANIFEST}（想钉住它就设 FISH_MEMORY_MCP_MANIFEST=${MANIFEST}）。`,
     })
   }
   if (method === 'notifications/initialized' || method === 'notifications/cancelled') return null
@@ -299,6 +335,11 @@ function handle(msg) {
 // 只在**被当脚本跑**时开 stdio 循环（被测试 import 时不抢 stdin）
 const isMain = process.argv[1] && /mcp\.mjs$/.test(process.argv[1]) && !process.env.NODE_TEST_CONTEXT
 if (isMain) {
+  // 指纹打到 stderr：一次运行一次，方便复制进客户端配置
+  process.stderr.write(`fish-memory mcp · 工具清单指纹 ${MANIFEST}\n`)
+  if (PINNED && PINNED !== MANIFEST) {
+    process.stderr.write(`✗ 指纹对不上（期望 ${PINNED}）：工具会拒绝服务直到你确认这次变更\n`)
+  }
   const rl = createInterface({ input: process.stdin })
   rl.on('line', (line) => {
     const t = line.trim()
@@ -315,4 +356,4 @@ if (isMain) {
   })
 }
 
-export { TOOLS, handle, callTool }
+export { MANIFEST, TOOLS, handle, callTool }
