@@ -82,6 +82,7 @@ import { planInheritance } from '../lib/anchor.js'
 import { unrefutePoint } from '../lib/unrefute.js'
 import { rechain } from '../lib/rechain.js'
 import { sweepLocks } from '../lib/archive.js'
+import { assertSafeRelPath } from '../lib/pathsafe.js'
 import { evidenceOf, renderEvidence } from '../lib/evidence.js'
 import { TIDY_EVERY, markTidyDone, tidyPack, tidyStatus } from '../lib/tidy.js'
 import { readJsonSafe } from '../lib/util.js'
@@ -612,7 +613,20 @@ function cmdPrivacy() {
  */
 function cmdErase(params) {
   needDir()
-  const ids = params.filter((p) => !p.startsWith('--'))
+  // B8（评审 v0.80.1，🔴）：原来只滤掉 `--flag` 本身，**没滤掉 flag 的值**——
+  // 于是 `memory erase msg-x --reason "测试"` 会把 `测试` 当成消息 id，
+  // 报"库里没有这些 id：测试"退出。帮助文本里展示的正是这个用法。
+  const VALUE_FLAGS = new Set(['--reason', '--point', '--dir', '--scope', '--at', '--by', '--mode', '--limit'])
+  const ids = []
+  for (let i = 0; i < params.length; i++) {
+    const p = params[i]
+    if (VALUE_FLAGS.has(p)) {
+      i += 1 // 跳过它的值
+      continue
+    }
+    if (p.startsWith('--')) continue
+    ids.push(p)
+  }
   if (!ids.length) fail('用法：memory erase <msg-id...> [--reason 说明] [--point <id>] [--cascade] [--yes]')
   const pointIdx = argv.indexOf('--point')
   const pointIds = pointIdx >= 0 ? [argv[pointIdx + 1]].filter(Boolean) : []
