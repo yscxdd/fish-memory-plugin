@@ -75,6 +75,7 @@ import { voiceMetrics } from '../lib/voicemetrics.js'
 import { renderToday, todayView } from '../lib/today.js'
 import { exportFmb, pruneFmb, readFmbHeader, verifyFmb } from '../lib/fmb.js'
 import { restoreFmb } from '../lib/restore.js'
+import { wallsReport, wallsSummary } from '../lib/walls.js'
 import { refutePoint, refutedWithoutReason } from '../lib/refute.js'
 import { evidenceOf, renderEvidence } from '../lib/evidence.js'
 import { TIDY_EVERY, markTidyDone, tidyPack, tidyStatus } from '../lib/tidy.js'
@@ -491,6 +492,12 @@ function cmdStatus() {
     console.log(`隐私：${where} · ${state}`)
   } catch {
     /* 体检失败不影响 status */
+  }
+  // v0.75.0：四堵墙的数字放进 status——"每周被看见"比"埋在测试里"有用
+  try {
+    for (const line of wallsSummary(dir)) console.log(line)
+  } catch {
+    /* 墙算不出来不影响 status */
   }
 }
 
@@ -1370,6 +1377,38 @@ function cmdEntity(sub, args) {
     return
   }
   fail('用法：memory entity <add|list|rebuild|show> ...')
+}
+
+// ── walls（四堵墙的数字）──────────────────────────────────────────
+/**
+ * v0.75.0。外部总结把伴侣记忆拆成四堵墙：记忆 / 触发 / 决定 / 连续。
+ * 前三堵我们有机制，第四堵我们最强——**但没有一堵有指标**。
+ * 这个命令只做一件事：把"墙有没有"变成"墙有多厚"。只读。
+ */
+function cmdWalls() {
+  needDir()
+  const r = wallsReport(dir)
+  if (flags.has('--json')) {
+    console.log(JSON.stringify(r, null, 2))
+    return
+  }
+  for (const line of wallsSummary(dir)) console.log(line)
+
+  console.log('')
+  console.log('  记忆墙  点数 ' + r.memory.points + ' · 有 source ' + r.memory.withSource +
+    ' · 可回溯 ' + r.memory.traceable + ' · 没有 source ' + r.memory.noSource +
+    ' · 档案 ' + r.memory.archiveFiles + ' 个文件')
+  console.log('  触发墙  共 ' + r.trigger.turns + ' 轮 · 门控挡掉 ' + r.trigger.gated +
+    ' · 真查 ' + r.trigger.tried + ' · 空 ' + r.trigger.empty +
+    (r.trigger.meaningful ? '' : '  ← 点数 0 时这个空率没有意义'))
+  console.log('  决定墙  被推翻 ' + r.decision.superseded + ' 条（带新点 ' + r.decision.withBy +
+    '）· 无反面证据的推翻 ' + r.decision.withoutEvidence + ' · 撤销工具 ' +
+    (r.decision.canUnrefute ? '有' : '缺（未做 M4）'))
+  console.log('  连续墙  漂移最大 ' + (r.continuity.driftWorst ?? '-') +
+    '（比了 ' + r.continuity.driftFiles + ' 个文件）· 锚点 ' + r.continuity.anchors + '/' +
+    r.continuity.anchorsTotal + ' · 金丝雀命中 ' + r.continuity.canary +
+    ' · 前缀样本 ' + r.continuity.prefixSamples +
+    (r.continuity.prefixVariants === null ? '' : ' · 不同取值 ' + r.continuity.prefixVariants))
 }
 
 // ── near-miss（差一点就想起的查询）────────────────────────────────
@@ -2628,6 +2667,9 @@ switch (command || 'help') {
     break
   case 'entity':
     cmdEntity(params[0], params.slice(1))
+    break
+  case 'walls':
+    cmdWalls()
     break
   case 'near-miss':
     cmdNearMiss()

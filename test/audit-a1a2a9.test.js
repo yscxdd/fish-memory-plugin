@@ -32,20 +32,24 @@ function lib(rows) {
   return dir
 }
 
-test('A1：账本已经校正过之后，再取状态不读档案（耗时是常数级）', () => {
-  const dir = lib(300)
-  const t0 = process.hrtime.bigint()
-  const first = tidyStatus(dir) // 第一次要校正
-  const t1 = process.hrtime.bigint()
-  const second = tidyStatus(dir) // 第二次只读 20_state/tidy.json
-  const t2 = process.hrtime.bigint()
+test('A1：账本校正过之后，再取状态不再读档案（数校正次数，不数时间）', async () => {
+  const { tidyCounters } = await import('../lib/tidy.js')
+  const dir = lib(3000)
+  const before = tidyCounters.corrections
 
-  assert.equal(first.rows, 300)
-  assert.equal(second.rows, 300)
-  const firstMs = Number(t1 - t0) / 1e6
-  const secondMs = Number(t2 - t1) / 1e6
-  // 不假装精确：第二次必须**显著**更快（读一个 JSON vs 解析 300 行档案 + 排序）
-  assert.ok(secondMs < Math.max(2, firstMs / 2), `第二次 ${secondMs.toFixed(2)}ms，第一次 ${firstMs.toFixed(2)}ms`)
+  const first = tidyStatus(dir) // 第一次要校正
+  assert.equal(first.rows, 3000)
+  assert.equal(tidyCounters.corrections, before + 1, '第一次应该校正一次')
+
+  const second = tidyStatus(dir) // 第二次只读 20_state/tidy.json
+  assert.equal(second.rows, 3000)
+  assert.equal(tidyCounters.corrections, before + 1, '第二次不该再校正——那就是"又读了一遍全量档案"')
+
+  // 档案被别的进程写新了 → 必须能发现（mtime 检测）
+  const f = join(dir, '10_archive/messages/2026-11-09.jsonl')
+  writeFileSync(f, JSON.stringify({ id: 'msg-9999-abcdef', seq: 9999, session: 's9', role: 'user', ts: '2026-11-09T10:00:00Z', text: '新的一条' }) + '\n', 'utf8')
+  tidyStatus(dir)
+  assert.equal(tidyCounters.corrections, before + 2, '档案变新时必须重新校正')
 })
 
 test('A1：档案被别的进程写新了 → 靠 mtime 发现并校正', () => {
