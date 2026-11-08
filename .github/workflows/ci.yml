@@ -80,15 +80,26 @@ jobs:
         run: node scripts/scale.mjs --check
 
       # 哪一步红了，写进 ci-log 分支（拿 job 日志要 auth，git fetch 不要）
+      # 注意：表达式里不能用变量索引 steps.*，所以每一步的 outcome 必须平铺写出
       - name: publish failure log
         if: always()
         shell: bash
+        env:
+          OUT_UNIT: ${{ steps.unit.outcome }}
+          OUT_VERIFY: ${{ steps.verify.outcome }}
+          OUT_HOSTCHECK: ${{ steps.hostcheck.outcome }}
+          OUT_GOLD: ${{ steps.gold.outcome }}
+          OUT_AUDIT: ${{ steps.audit.outcome }}
+          OUT_TZ: ${{ steps.tz.outcome }}
+          OUT_HARD: ${{ steps.hard.outcome }}
+          OUT_SCALE: ${{ steps.scale.outcome }}
         run: |
           failed=""
-          for s in unit verify hostcheck gold audit tz hard scale; do
-            eval "outcome=\${{ steps.$s.outcome }}"
+          for name in unit verify hostcheck gold audit tz hard scale; do
+            key="OUT_$(echo "$name" | tr 'a-z' 'A-Z')"
+            outcome=$(printenv "$key" || echo unknown)
             if [ "$outcome" != "success" ] && [ "$outcome" != "skipped" ]; then
-              failed="$failed $s=$outcome"
+              failed="$failed $name=$outcome"
             fi
           done
           if [ -n "$failed" ]; then
@@ -97,7 +108,7 @@ jobs:
               echo "job: $RUNNER_OS / node ${{ matrix.node }}"
               echo "failed:$failed"
               echo "--- test.log tail ---"
-              [ -f "$RUNNER_TEMP/test.log" ] && tail -25 "$RUNNER_TEMP/test.log"
+              if [ -f "$RUNNER_TEMP/test.log" ]; then tail -25 "$RUNNER_TEMP/test.log"; fi
             } > .ci/test-fail.log
             git config user.name "ci-bot"
             git config user.email "ci-bot@invalid"
