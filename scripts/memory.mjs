@@ -80,6 +80,7 @@ import { checkFields, renderFields } from '../lib/fieldcheck.js'
 import { refutePoint, refutedWithoutReason } from '../lib/refute.js'
 import { planInheritance } from '../lib/anchor.js'
 import { unrefutePoint } from '../lib/unrefute.js'
+import { rechain } from '../lib/rechain.js'
 import { evidenceOf, renderEvidence } from '../lib/evidence.js'
 import { TIDY_EVERY, markTidyDone, tidyPack, tidyStatus } from '../lib/tidy.js'
 import { readJsonSafe } from '../lib/util.js'
@@ -708,6 +709,36 @@ function cmdRefute() {
   console.log(`  理由：${r.reason}`)
   if (r.by) console.log(`  新点：${r.by}${r.linked ? '（已在新点上记 contradicts）' : '（没连上新点，检查 id）'}`)
   console.log('  → 它仍然会注入，但带 [已推翻] 标记；痕迹进了 50_log/erasure.log')
+}
+
+// ── rechain（修断掉的档案链）────────────────────────────────────────
+/**
+ * v0.78.0（审计 P1-3）。两个窗口同时写档案时链可能断（`prev 对不上`）。
+ * 断了之后 `verify` 永远红、备份原样存下断链——而修复命令一直不存在。
+ *
+ * 它**只按现有顺序重算 prev/hash**：不排序、不合并、不删行。
+ * 修复工具如果顺手"整理"一下，你手里的档案和你以为的就不是同一份了。
+ */
+function cmdRechain() {
+  needDir()
+  const day = flagValue('--day') || null
+  if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) fail('--day 要写 YYYY-MM-DD')
+  const dry = flags.has('--dry')
+  const r = rechain(dir, { day, dry })
+  if (!r.total) {
+    console.log(day ? `（${day} 没有档案文件）` : '（没有档案文件）')
+    return
+  }
+  for (const f of r.files) {
+    const name = f.file.split(/[\\/]/).pop()
+    console.log(`  ${f.changed ? '✗' : '✓'} ${name} · ${f.lines} 行 · ${f.changed ? '链断过，已重算' : '本来就是连的'}`)
+  }
+  if (dry) {
+    console.log('\n（--dry：只看不写）')
+    return
+  }
+  console.log(`\n✓ ${r.changed} / ${r.total} 个文件被修；流水在 50_log/rechain.log`)
+  if (r.changed) console.log('  修完跑一次 memory verify 确认')
 }
 
 // ── unrefute（推翻错了要能退）──────────────────────────────────────
@@ -2720,6 +2751,9 @@ switch (command || 'help') {
     break
   case 'refute':
     cmdRefute()
+    break
+  case 'rechain':
+    cmdRechain()
     break
   case 'unrefute':
     cmdUnrefute()

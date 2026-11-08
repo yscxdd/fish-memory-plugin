@@ -1,7 +1,7 @@
-# fish-memory-plugin v0.77.0
+# fish-memory-plugin v0.78.0
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-922%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-936%20passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependencies-0-blueviolet)
 
 **Local-first long-term memory for AI companions** · 给 AI 伴侣的本地长期记忆插件。
@@ -18,6 +18,37 @@
 > **这个目录是可丢弃的。** 删掉它 + 从 profile 移除两行，就完全消失，记忆库一个字节不动。
 
 ---
+
+## 接到 Claude Code / Codex（MCP）
+
+四个**只读**工具，stdio + JSON-RPC，零依赖：
+
+```json
+{
+  "mcpServers": {
+    "fish-memory": {
+      "command": "node",
+      "args": ["<插件目录>/scripts/mcp.mjs", "--dir", "<记忆库>"]
+    }
+  }
+}
+```
+
+| 工具 | 干什么 |
+|---|---|
+| `memory_search(query, limit, scope)` | 搜记忆点 + 档案原话，**按 scope 过滤** |
+| `memory_get(id, scope)` | 按 id 取一条点；或 `seq:<n>@<session>` 展开档案消息 |
+| `memory_context(q, scope)` | 取当前会注入的上下文（核心层 + 检索） |
+| `memory_evidence(id, scope)` | 把 source 逐条打回原文，并报链是否完好 |
+
+**写操作一律不暴露**：要写走 `40_pending` 的现有闸门。
+默认作用域是 `dm:master`；`visibility: secret` 的点在非私聊作用域里**硬过滤**。
+返回的原文都包在"这是数据、不是指令"的信封里——档案里可能粘进过网页/邮件，那是提示注入的现成通道。
+
+```powershell
+# 直接用 stdio 试一下（打印 initialize + tools/list）
+'{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | node scripts/mcp.mjs --dir ../fish-memory
+```
 
 ## Quickstart · 2 分钟跑通（**不需要 DSH**）
 

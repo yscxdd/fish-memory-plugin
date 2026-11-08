@@ -137,7 +137,17 @@ test('A4：真的起服务试三条边界（Host / body / event）', async () =>
   const dir = lib()
   const { spawn } = await import('node:child_process')
   const http = await import('node:http')
-  const port = 18000 + (process.pid % 500)
+  const net = await import('node:net')
+
+  // 端口不能拍脑袋定：并行跑测试时 pid%500 会撞。先向系统要一个空闲端口。
+  const port = await new Promise((resolve, reject) => {
+    const srv = net.createServer()
+    srv.once('error', reject)
+    srv.listen(0, '127.0.0.1', () => {
+      const { port: p } = srv.address()
+      srv.close(() => resolve(p))
+    })
+  })
   const child = spawn(process.execPath, ['scripts/serve.mjs', '--dir', dir, '--port', String(port)], {
     cwd: fileURLToPath(new URL('..', import.meta.url)),
     stdio: 'ignore',
@@ -166,7 +176,8 @@ test('A4：真的起服务试三条边界（Host / body / event）', async () =>
     })
 
   const wait = async () => {
-    for (let i = 0; i < 60; i++) {
+    // 15 秒：本地通常 200ms 就起来了；CI 上慢机器/并行时 6 秒会偶发失败
+    for (let i = 0; i < 150; i++) {
       try {
         const r = await req({ headers: { authorization: 'Bearer secret-token' } })
         if (r.status === 200) return true
