@@ -78,6 +78,8 @@ import { restoreFmb } from '../lib/restore.js'
 import { wallsReport, wallsSummary } from '../lib/walls.js'
 import { checkFields, renderFields } from '../lib/fieldcheck.js'
 import { refutePoint, refutedWithoutReason } from '../lib/refute.js'
+import { planInheritance } from '../lib/anchor.js'
+import { unrefutePoint } from '../lib/unrefute.js'
 import { evidenceOf, renderEvidence } from '../lib/evidence.js'
 import { TIDY_EVERY, markTidyDone, tidyPack, tidyStatus } from '../lib/tidy.js'
 import { readJsonSafe } from '../lib/util.js'
@@ -325,6 +327,31 @@ function cmdInvalidate(id) {
     JSON.stringify({ at: new Date().toISOString(), point: id, invalid_at: at, reason: reason || null }) + '\n',
     'utf8',
   )
+  // v0.77.0：把旧标题的话题词继承给新点。
+  // 不这么做，"改口之后旧问法查不到"——实测两条空召回（「我们约的哪天见面」/「见面改时间了吗」）
+  // 在旧点失效后最高分都是 0.000（新旧标题零重叠），继承话题词后变成 3.250 / 3.100。
+  try {
+    const after = readPointFiles(dir, '30_points')
+    const inheritArg = flagValue('--inherit')
+    const plan = planInheritance(after, p, {
+      by: flagValue('--by') || null,
+      inherit: inheritArg ? String(inheritArg).split(',').map((s) => s.trim()).filter(Boolean) : null,
+    })
+    if (plan.by && plan.words.length) {
+      const target = after.find((x) => x.id === plan.by)
+      const tAbs = String(target.file).includes(dir) ? String(target.file) : join(dir, '30_points', String(target.file))
+      const beforeRaw = readFileSync(tAbs, 'utf8')
+      const patched = patchAliases(beforeRaw, plan.words)
+      if (patched.raw !== beforeRaw) atomicWriteText(tAbs, patched.raw)
+      console.log(`✓ 话题锚点继承给 ${plan.by}：${plan.words.join(' / ')}（${plan.reason}）`)
+      console.log('  → 原来那个问法现在能查到了；要撤销就手工删 aliases 里这几个词')
+    } else if (plan.words.length) {
+      console.log(`! 没有可继承的新点（${plan.reason}）：旧标题的话题词是 ${plan.words.join(' / ')}`)
+    }
+  } catch (e) {
+    console.error(`! 话题锚点继承失败（不影响失效本身）：${e?.message || e}`)
+  }
+
   console.log(`✓ ${id} 已标记为 ${at} 起不再成立：点仍在库里、审计仍看得见，但不再进注入`)
   console.log('  撤销：手工删掉该文件的 invalid_at / invalid_reason 两行')
 }
@@ -681,6 +708,29 @@ function cmdRefute() {
   console.log(`  理由：${r.reason}`)
   if (r.by) console.log(`  新点：${r.by}${r.linked ? '（已在新点上记 contradicts）' : '（没连上新点，检查 id）'}`)
   console.log('  → 它仍然会注入，但带 [已推翻] 标记；痕迹进了 50_log/erasure.log')
+}
+
+// ── unrefute（推翻错了要能退）──────────────────────────────────────
+/**
+ * v0.77.0（M4）。华莎那句「没有撤销权的决定权，第一次错就是永久的」——
+ * 我们没把决定权交给代码（人决，立场不变），但**人自己的撤销工具一直缺**：
+ * `refute` 从 v0.69 就有，`unrefute` 到这一版才有。
+ *
+ * 纪律和 refute 对称：必须给理由；账本记 `action: 'unrefute'`（只追加、不含原文）。
+ */
+function cmdUnrefute() {
+  needDir()
+  const id = params[0]
+  const reason = flagValue('--reason')
+  if (!id) fail('用法：memory unrefute <id> --reason "为什么撤销"')
+  const r = unrefutePoint(dir, id, { reason })
+  if (!r.ok) fail(r.reason)
+  console.log(`✓ 已撤销推翻：${r.id}`)
+  console.log(`  理由：${r.reason}`)
+  if (r.wasRefutedBy) {
+    console.log(`  新点 ${r.wasRefutedBy} 上的 contradicts ${r.unlinked ? '已摘掉' : '没摘掉（手工看一眼）'}`)
+  }
+  console.log('  → 状态回到 active；痕迹进了 50_log/erasure.log（action: unrefute）')
 }
 
 function cmdEvidence() {
@@ -2670,6 +2720,9 @@ switch (command || 'help') {
     break
   case 'refute':
     cmdRefute()
+    break
+  case 'unrefute':
+    cmdUnrefute()
     break
   case 'evidence':
     cmdEvidence()
