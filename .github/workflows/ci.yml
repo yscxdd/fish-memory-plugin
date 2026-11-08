@@ -31,72 +31,77 @@ jobs:
         run: 'node -p "JSON.stringify({ platform: process.platform, node: process.version, arch: process.arch })"'
 
       # 单元测试：零依赖、不联网、不启动 DSH（起一个假 ctx 就够）
-      - name: unit tests
+      # v0.75.1：日志写 $RUNNER_TEMP —— **不能写仓库根**，scale numbers 会数仓库根的文件数
+      - id: unit
+        name: unit tests
         shell: bash
         run: |
           set +e
           node --test --test-reporter=spec > "$RUNNER_TEMP/test.log" 2>&1
-          node_code=$?
-          echo "::error title=node-exit::node --test exit=$node_code"
-          echo "node --test exit=$node_code" >> "$RUNNER_TEMP/test.log"
-          tail -5 "$RUNNER_TEMP/test.log" | while IFS= read -r line; do echo "::error::$line"; done
-          exit $node_code
+          code=$?
+          echo "node --test exit=$code" >> "$RUNNER_TEMP/test.log"
+          tail -3 "$RUNNER_TEMP/test.log"
+          exit $code
 
-      - name: report failing tests
+      # 包自检：必需文件齐不齐、有没有 BOM、有没有导出 apply
+      - id: verify
+        name: package self-check
+        run: node scripts/memory.mjs verify
+
+      # 宿主口子：17 个口子都有标记、lib/ 里没有越界访问 ctx
+      - id: hostcheck
+        name: host surface (static)
+        run: node scripts/memory.mjs hostcheck
+
+      # 金标召回：20 条改写查询 + 6 条负例；低于 16/20 直接失败
+      - id: gold
+        name: gold set
+        run: node scripts/memory.mjs gold
+
+      # 自审：项目自己的安全规矩（静态、离线、只读）
+      - id: audit
+        name: self audit
+        run: npm run audit
+
+      # 三个时区：v0.50.0 那次 CI 连红三次就是时区写死的（v0.52.2）
+      - id: tz
+        name: timezone sweep
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == 22 }}
+        run: node scripts/tz-check.mjs
+
+      # 难题组：会输的尺子（v0.50.0）。当前 70%，退回 50% 以下直接失败
+      - id: hard
+        name: hard gold set
+        run: node scripts/memory.mjs gold --set hard --floor 0.5
+
+      # 规模数字：CHANGELOG 里的「当前规模」必须和磁盘一致（v0.46.1 起不再手写）
+      - id: scale
+        name: scale numbers
+        run: node scripts/scale.mjs --check
+
+      # 哪一步红了，写进 ci-log 分支（拿 job 日志要 auth，git fetch 不要）
+      - name: publish failure log
         if: always()
         shell: bash
         run: |
-          if [ -f "$RUNNER_TEMP/test.log" ]; then
-            sum=$(grep -E '^(ℹ|#) (tests|pass|fail|skipped)' $RUNNER_TEMP/test.log | tr '\n' ' ')
-            names=$(grep -E '^✖ ' $RUNNER_TEMP/test.log | sed -E 's/[[:space:]]*\([0-9.]+ms\)$//' | head -6 | tr '\n' '|')
-            echo "::error title=ci-summary::$sum"
-            echo "::error title=failing-names::$names"
-          else
-            echo "::error title=ci-summary::$RUNNER_TEMP/test.log missing (npm test died before writing)"
-          fi
-
-
-      # 拿不到 job 日志（要 auth）、annotation 又有条数上限，所以最后一条路：
-      # 失败时把 $RUNNER_TEMP/test.log 的尾巴推到一个专门的分支，本地 git fetch 就能读
-      - name: publish failure log
-        if: failure()
-        shell: bash
-        run: |
-          if [ -f $RUNNER_TEMP/test.log ]; then
+          failed=""
+          for s in unit verify hostcheck gold audit tz hard scale; do
+            eval "outcome=\${{ steps.$s.outcome }}"
+            if [ "$outcome" != "success" ] && [ "$outcome" != "skipped" ]; then
+              failed="$failed $s=$outcome"
+            fi
+          done
+          if [ -n "$failed" ]; then
             mkdir -p .ci
-            tail -300 "$RUNNER_TEMP/test.log" > .ci/test-fail.log
+            {
+              echo "job: $RUNNER_OS / node ${{ matrix.node }}"
+              echo "failed:$failed"
+              echo "--- test.log tail ---"
+              [ -f "$RUNNER_TEMP/test.log" ] && tail -25 "$RUNNER_TEMP/test.log"
+            } > .ci/test-fail.log
             git config user.name "ci-bot"
             git config user.email "ci-bot@invalid"
             git add -f .ci/test-fail.log
             git commit -m "ci: failure log for ${GITHUB_SHA} on ${RUNNER_OS}" || true
             git push origin HEAD:ci-log --force || true
           fi
-
-      # 包自检：必需文件齐不齐、有没有 BOM、有没有导出 apply
-      - name: package self-check
-        run: node scripts/memory.mjs verify
-
-      # 宿主口子：17 个口子都有标记、lib/ 里没有越界访问 ctx
-      - name: host surface (static)
-        run: node scripts/memory.mjs hostcheck
-
-      # 金标召回：20 条改写查询 + 6 条负例；低于 16/20 直接失败
-      - name: gold set
-        run: node scripts/memory.mjs gold
-
-      # 自审：项目自己的安全规矩（静态、离线、只读）
-      - name: self audit
-        run: npm run audit
-
-      # 三个时区：v0.50.0 那次 CI 连红三次就是时区写死的（v0.52.2）
-      - name: timezone sweep
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == 22 }}
-        run: node scripts/tz-check.mjs
-
-      # 难题组：会输的尺子（v0.50.0）。当前 70%，退回 50% 以下直接失败
-      - name: hard gold set
-        run: node scripts/memory.mjs gold --set hard --floor 0.5
-
-      # 规模数字：CHANGELOG 里的「当前规模」必须和磁盘一致（v0.46.1 起不再手写）
-      - name: scale numbers
-        run: node scripts/scale.mjs --check
