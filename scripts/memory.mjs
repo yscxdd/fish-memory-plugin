@@ -76,6 +76,7 @@ import { renderToday, todayView } from '../lib/today.js'
 import { exportFmb, pruneFmb, readFmbHeader, verifyFmb } from '../lib/fmb.js'
 import { restoreFmb } from '../lib/restore.js'
 import { wallsReport, wallsSummary } from '../lib/walls.js'
+import { checkFields, renderFields } from '../lib/fieldcheck.js'
 import { refutePoint, refutedWithoutReason } from '../lib/refute.js'
 import { evidenceOf, renderEvidence } from '../lib/evidence.js'
 import { TIDY_EVERY, markTidyDone, tidyPack, tidyStatus } from '../lib/tidy.js'
@@ -200,6 +201,35 @@ function cmdCheck() {
 }
 
 // ── promote ────────────────────────────────────────────────────
+/**
+ * 补 `learned_at`（v0.76.0）。
+ *
+ * 为什么要有：这个字段 v0.73 就解析了、也渲染了，**但没有任何写入方**——
+ * 属于"读了没人写"，读到的永远是空。这类断线现在是 `memory fields` 会报的。
+ *
+ * 什么时候写：`source` 里最早那条消息的时间，和点自己的 `date`（事情发生日）
+ * 差 **≥30 天** 才写。差几天是正常的记录延迟，写了只是噪音。
+ *
+ * 写不进去不算错——`learned_at` 是可选字段，缺了按 `date` 兜底（见 render.js 的 learnedLate）。
+ */
+function withLearnedAt(raw, draft, archive) {
+  if (/^learned_at:/m.test(raw)) return raw
+  const ids = Array.isArray(draft.source) ? draft.source : []
+  const stamps = ids
+    .map((id) => archive.byId?.get?.(id))
+    .filter(Boolean)
+    .map((m) => Date.parse(m.ts))
+    .filter((n) => Number.isFinite(n))
+  if (!stamps.length) return raw
+  const learnedMs = Math.min(...stamps)
+  const happenedMs = Date.parse(String(draft.date || ''))
+  if (!Number.isFinite(happenedMs)) return raw
+  if (learnedMs - happenedMs < 30 * 86_400_000) return raw
+  const learnedAt = new Date(learnedMs).toISOString()
+  // 插在 date 行后面（front matter 里，保持人能读的顺序）
+  return raw.replace(/^(date:[^\n]*\n)/m, `$1learned_at: ${learnedAt}\n`)
+}
+
 function cmdPromote(id) {
   if (!id) fail('用法：memory promote <M-YYYY-MM-DD-NNN>')
   needDir()
@@ -220,7 +250,9 @@ function cmdPromote(id) {
   if (existsSync(dest)) fail(`30_points 里已有 ${draft.id}`)
   mkdirSync(join(dir, '30_points'), { recursive: true })
   // v0.23.1：素材点自动带别名（书名/类型），让"下次提书名"能命中；只补没有的，纯加法
-  const base = draft.raw.replace(/^status:.*$/m, 'status: active')
+  // v0.76.0：顺手把 learned_at 补上（没有写入方的字段 = 死字段，这条就是补它的）
+  const learned = withLearnedAt(draft.raw, draft, archive)
+  const base = learned.replace(/^status:.*$/m, 'status: active')
   const aliased = patchAliases(base, assetAliases(draft, loadAssets(dir).books))
   const patched = aliased.raw
   const tmp = `${dest}.tmp`
@@ -1377,6 +1409,25 @@ function cmdEntity(sub, args) {
     return
   }
   fail('用法：memory entity <add|list|rebuild|show> ...')
+}
+
+// ── fields（front matter 字段的接线表）────────────────────────────
+/**
+ * v0.76.0。这个仓库连续四次犯"接线断了一头"的错（contradicts / refuted_by / scope / learned_at），
+ * 每次都不是逻辑写错。人的眼睛看不见，所以做成一条能跑的命令。
+ *
+ * 三种产生方式：她写（技能模板教了） / 代码写（某条命令在改） / 谁都不写（死字段）。
+ * 表在 lib/fieldcheck.js 的 POINT_FIELDS，检查会核对表与代码是否一致。
+ */
+function cmdFields() {
+  const r = checkFields(resolve(import.meta.dirname, '..'))
+  if (flags.has('--json')) {
+    console.log(JSON.stringify(r, null, 2))
+  } else {
+    console.log(renderFields(r))
+  }
+  // 有孤儿字段就退 1：这条能进 CI，接的是"新增字段必须两头都接上"
+  if (r.orphans.length || r.unregistered.length || r.deadWriters.length) process.exitCode = 1
 }
 
 // ── walls（四堵墙的数字）──────────────────────────────────────────
@@ -2667,6 +2718,9 @@ switch (command || 'help') {
     break
   case 'entity':
     cmdEntity(params[0], params.slice(1))
+    break
+  case 'fields':
+    cmdFields()
     break
   case 'walls':
     cmdWalls()
