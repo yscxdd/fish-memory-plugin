@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     name: node ${{ matrix.node }} / ${{ matrix.os }}
@@ -47,6 +50,23 @@ jobs:
             echo "::error title=failing-names::$names"
           else
             echo "::error title=ci-summary::test.log missing (npm test died before writing)"
+          fi
+
+
+      # 拿不到 job 日志（要 auth）、annotation 又有条数上限，所以最后一条路：
+      # 失败时把 test.log 的尾巴推到一个专门的分支，本地 git fetch 就能读
+      - name: publish failure log
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f test.log ]; then
+            mkdir -p .ci
+            tail -300 test.log > .ci/test-fail.log
+            git config user.name "ci-bot"
+            git config user.email "ci-bot@invalid"
+            git add -f .ci/test-fail.log
+            git commit -m "ci: failure log for ${GITHUB_SHA} on ${RUNNER_OS}" || true
+            git push origin HEAD:ci-log --force || true
           fi
 
       # 包自检：必需文件齐不齐、有没有 BOM、有没有导出 apply
