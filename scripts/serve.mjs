@@ -128,7 +128,17 @@ const server = createServer((req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/dashboard') {
       const html = renderDashboardHtml()
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
+      // CSP（v0.78.2）：这一页是我们自己拼的 HTML，但**数据来自记忆库**——
+      // 万一哪天有人把抓来的网页内容写进记忆点，CSP 是"就算混进去也跑不起来"的那层。
+      // 只允许自己的 /today 端点，禁 inline script 之外的任何外连。
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+        'content-security-policy':
+          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'no-referrer',
+      })
       res.end(html)
       return
     }
