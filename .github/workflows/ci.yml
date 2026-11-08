@@ -32,12 +32,15 @@ jobs:
 
       # 单元测试：零依赖、不联网、不启动 DSH（起一个假 ctx 就够）
       - name: unit tests
-        # v0.75.1：输出同时落一份 test.log，失败时下一步把红的名字写成 annotation
-        # （拿不到 CI 日志的时候，annotation 是唯一能读到的通道）
         shell: bash
         run: |
-          set -o pipefail
-          npm test 2>&1 | tee test.log
+          set +e
+          node --test --test-reporter=spec > test.log 2>&1
+          node_code=$?
+          echo "::error title=node-exit::node --test exit=$node_code"
+          echo "node --test exit=$node_code" >> test.log
+          tail -5 test.log | while IFS= read -r line; do echo "::error::$line"; done
+          exit $node_code
 
       - name: report failing tests
         if: always()
