@@ -32,7 +32,7 @@ import { detectMode, layoutAbilities, rankAbilities, renderTools, scanAbilities 
 import { rankHybrid } from '../lib/retrieve.js'
 import { SELF_TOPIC, latestSelf, renderSelfBlock } from '../lib/self.js'
 import { statusOf } from '../lib/inspect.js'
-import { estTokens, rotateLog } from '../lib/util.js'
+import { estTokens, rotateLog, sanitizeForPrompt } from '../lib/util.js'
 
 const args = process.argv.slice(2)
 const arg = (name, fallback) => {
