@@ -29,7 +29,22 @@ jobs:
 
       # 单元测试：零依赖、不联网、不启动 DSH（起一个假 ctx 就够）
       - name: unit tests
-        run: npm test
+        # v0.75.1：输出同时落一份 test.log，失败时下一步把红的名字写成 annotation
+        # （拿不到 CI 日志的时候，annotation 是唯一能读到的通道）
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test.log
+
+      - name: report failing tests
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f test.log ]; then
+            grep -E '✖' test.log | head -12 | while IFS= read -r line; do echo "::error title=failing::$line"; done
+            echo '---- tail ----'
+            tail -12 test.log | while IFS= read -r line; do echo "::error::$line"; done
+          fi
 
       # 包自检：必需文件齐不齐、有没有 BOM、有没有导出 apply
       - name: package self-check
