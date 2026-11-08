@@ -206,13 +206,16 @@ function callTool(name, args = {}) {
     }
     const archiveHits = (() => {
       try {
-        return searchArchive(dir, q, { limit: 5 })
+        // R2：把作用域传下去——**群作用域不该读到私聊原话**
+        return searchArchive(dir, q, { limit: 5, scope })
       } catch {
         return []
       }
     })()
     const lines = [`记忆点 ${points.length} 条（scope=${scope}）`]
-    for (const p of points) lines.push(`- ${p.id} · ${p.date || ''} ${p.title || ''}${p.summary ? `：${String(p.summary).slice(0, 60)}` : ''}`)
+    // R4：用 renderPoint('idx')，它会带 `[已推翻]` / `[不成立]` 标记并把文本过一遍净化。
+    // （之前这里手拼一行，把标记吃掉了——外部 agent 只看到"一条事实"。）
+    for (const p of points) lines.push(renderPoint(p, 'idx'))
     if (archiveHits.length) {
       lines.push('', '档案原话：')
       for (const m of archiveHits) lines.push(`- ${String(m.ts || '').slice(0, 16)} · ${m.role === 'assistant' ? '她' : '你'}：${String(m.excerpt || '').slice(0, 90)}`)
@@ -232,7 +235,12 @@ function callTool(name, args = {}) {
       const [seqPart, sess] = body.split('@')
       const seq = Number(seqPart)
       if (!Number.isFinite(seq)) return text(`seq 写法不对：${id}（要 seq:1203 或 seq:1203@<sessionId>）`)
-      const all = (readPointArchive() || []).filter((m) => m.seq === seq)
+      // R2：档案消息也要认作用域（老记录没有 scope → 当主人私聊）
+      const inScope = (m) => {
+        const s = m.scope || 'dm:master'
+        return s === scope || s === 'global'
+      }
+      const all = (readPointArchive() || []).filter((m) => m.seq === seq && inScope(m))
       const hits = sess ? all.filter((m) => String(m.session || '') === sess) : all
       if (!hits.length) {
         return text(all.length ? `seq:${seq} 有 ${all.length} 条，但都不在会话 ${sess} 里` : `档案里没有 seq:${seq}`)

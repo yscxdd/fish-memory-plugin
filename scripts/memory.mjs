@@ -81,6 +81,7 @@ import { refutePoint, refutedWithoutReason } from '../lib/refute.js'
 import { planInheritance } from '../lib/anchor.js'
 import { unrefutePoint } from '../lib/unrefute.js'
 import { rechain } from '../lib/rechain.js'
+import { sweepLocks } from '../lib/archive.js'
 import { evidenceOf, renderEvidence } from '../lib/evidence.js'
 import { TIDY_EVERY, markTidyDone, tidyPack, tidyStatus } from '../lib/tidy.js'
 import { readJsonSafe } from '../lib/util.js'
@@ -720,7 +721,29 @@ function cmdRefute() {
  * 修复工具如果顺手"整理"一下，你手里的档案和你以为的就不是同一份了。
  */
 function cmdRechain() {
+  // R3：改名释放会留 *.free，顺手清掉自己留下的（不是热路径）
+  try {
+    sweepLocks(dir)
+  } catch {
+    /* ignore */
+  }
   needDir()
+  // R1 护栏：目录里有 *.lock 说明**此刻有人正在写档案**。
+  // 修链要整文件替换，跟写入撞上就会吃消息——默认拒绝，--force 才继续。
+  const locks = (() => {
+    try {
+      const msgDir = join(dir, '10_archive', 'messages')
+      return readdirSync(msgDir).filter((f) => f.endsWith('.lock'))
+    } catch {
+      return []
+    }
+  })()
+  if (locks.length && !flags.has('--force')) {
+    console.error(`✗ 有写入方正在工作（${locks.length} 个锁文件），现在修链可能吃消息：`)
+    for (const f of locks.slice(0, 3)) console.error(`    ${f}`)
+    console.error('  等它写完再跑；确定要现在修就加 --force（建议先 memory backup）')
+    process.exit(1)
+  }
   const day = flagValue('--day') || null
   if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) fail('--day 要写 YYYY-MM-DD')
   const dry = flags.has('--dry')
