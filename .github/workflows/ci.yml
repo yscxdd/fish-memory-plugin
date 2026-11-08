@@ -40,13 +40,13 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo "::error::node=$(node -v) npm=$(npm -v) cwd=$(pwd)"
-          echo "::error::test.log exists: $([ -f test.log ] && echo yes || echo no) size: $(wc -c < test.log 2>/dev/null || echo 0)"
           if [ -f test.log ]; then
-            echo "::error::---- head ----"
-            head -20 test.log | while IFS= read -r line; do echo "::error::$line"; done
-            echo "::error::---- tail ----"
-            tail -25 test.log | while IFS= read -r line; do echo "::error::$line"; done
+            sum=$(grep -E '^(ℹ|#) (tests|pass|fail|skipped)' test.log | tr '\n' ' ')
+            names=$(grep -E '^✖ ' test.log | sed -E 's/[[:space:]]*\([0-9.]+ms\)$//' | head -6 | tr '\n' '|')
+            echo "::error title=ci-summary::$sum"
+            echo "::error title=failing-names::$names"
+          else
+            echo "::error title=ci-summary::test.log missing (npm test died before writing)"
           fi
 
       # 包自检：必需文件齐不齐、有没有 BOM、有没有导出 apply
