@@ -35,36 +35,36 @@ jobs:
         shell: bash
         run: |
           set +e
-          node --test --test-reporter=spec > test.log 2>&1
+          node --test --test-reporter=spec > "$RUNNER_TEMP/test.log" 2>&1
           node_code=$?
           echo "::error title=node-exit::node --test exit=$node_code"
-          echo "node --test exit=$node_code" >> test.log
-          tail -5 test.log | while IFS= read -r line; do echo "::error::$line"; done
+          echo "node --test exit=$node_code" >> "$RUNNER_TEMP/test.log"
+          tail -5 "$RUNNER_TEMP/test.log" | while IFS= read -r line; do echo "::error::$line"; done
           exit $node_code
 
       - name: report failing tests
         if: always()
         shell: bash
         run: |
-          if [ -f test.log ]; then
-            sum=$(grep -E '^(ℹ|#) (tests|pass|fail|skipped)' test.log | tr '\n' ' ')
-            names=$(grep -E '^✖ ' test.log | sed -E 's/[[:space:]]*\([0-9.]+ms\)$//' | head -6 | tr '\n' '|')
+          if [ -f "$RUNNER_TEMP/test.log" ]; then
+            sum=$(grep -E '^(ℹ|#) (tests|pass|fail|skipped)' $RUNNER_TEMP/test.log | tr '\n' ' ')
+            names=$(grep -E '^✖ ' $RUNNER_TEMP/test.log | sed -E 's/[[:space:]]*\([0-9.]+ms\)$//' | head -6 | tr '\n' '|')
             echo "::error title=ci-summary::$sum"
             echo "::error title=failing-names::$names"
           else
-            echo "::error title=ci-summary::test.log missing (npm test died before writing)"
+            echo "::error title=ci-summary::$RUNNER_TEMP/test.log missing (npm test died before writing)"
           fi
 
 
       # 拿不到 job 日志（要 auth）、annotation 又有条数上限，所以最后一条路：
-      # 失败时把 test.log 的尾巴推到一个专门的分支，本地 git fetch 就能读
+      # 失败时把 $RUNNER_TEMP/test.log 的尾巴推到一个专门的分支，本地 git fetch 就能读
       - name: publish failure log
         if: failure()
         shell: bash
         run: |
-          if [ -f test.log ]; then
+          if [ -f $RUNNER_TEMP/test.log ]; then
             mkdir -p .ci
-            tail -300 test.log > .ci/test-fail.log
+            tail -300 "$RUNNER_TEMP/test.log" > .ci/test-fail.log
             git config user.name "ci-bot"
             git config user.email "ci-bot@invalid"
             git add -f .ci/test-fail.log
