@@ -202,7 +202,9 @@ function callTool(name, args = {}) {
       points = rankHybrid(pool, q, { threshold: 0.35, limit }).map((x) => x.point)
     } catch {
       /* 读不出来就退回朴素检索（也要过作用域） */
-      points = searchPoints(dir, q, limit).filter((p) => visibleIn(p, scope))
+      // 评审 v0.80.1 次要项：searchPoints(dir, query, { limit })，传 number 会被
+      // 解构忽略 → 永远用默认 10 条。这里补成对象。
+      points = searchPoints(dir, q, { limit }).filter((p) => visibleIn(p, scope))
     }
     const archiveHits = (() => {
       try {
