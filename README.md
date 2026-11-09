@@ -1,7 +1,7 @@
-# fish-memory-plugin v0.84.0
+# fish-memory-plugin v0.85.0
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-1010%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-1016%20passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependencies-0-blueviolet)
 
 **Local-first long-term memory for AI companions** · 给 AI 伴侣的本地长期记忆插件。
