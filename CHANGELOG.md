@@ -331,10 +331,8 @@ ok: ... && !sampled
 
 ### F5 / F6（接口侧）
 
-- `/context?session=../../leak` 能读到库外任意 `*.json`：`parseContextQuery` 校验字符集（`^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}# 变更年表 · 2026-10-30/31 · v0.5.8 → v0.80.0
+- `/context?session=../../leak` 能读到库外任意 `*.json`：`parseContextQuery` 校验字符集（`^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$` 且不含 `..`），`store.sessionPath` 再加一层 `basename` 校验。
 
-> 这份是给"回看"用的：哪一版改了什么、为什么改、动了哪条不变量、当时有多少测试。
-> 交接看 `HANDOFF-2026-10-30.md`；契约细节看 `大肥鱼-插件接口契约-v1.0.md`。
 
 ## 0. 一页看完
 
