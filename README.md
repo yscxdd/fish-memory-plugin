@@ -1,7 +1,7 @@
-# fish-memory-plugin v0.85.0
+# fish-memory-plugin v0.86.0
 
 [![ci](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/yscxdd/fish-memory-plugin/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-1016%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-1030%20passing-brightgreen)
 ![deps](https://img.shields.io/badge/dependencies-0-blueviolet)
 
 **Local-first long-term memory for AI companions** · 给 AI 伴侣的本地长期记忆插件。
@@ -18,6 +18,19 @@
 > **这个目录是可丢弃的。** 删掉它 + 从 profile 移除两行，就完全消失，记忆库一个字节不动。
 
 ---
+
+## 升级 / 故障恢复（先看这一节）
+
+DSH 升级、插件丢失、库损坏时，**一秒钟判断她还好吗**：
+
+```powershell
+node scripts/doctor.mjs           # 五条体检：声明 / 安装 / 库 / 备份 / 位置
+node scripts/doctor.mjs --drill   # 再真的从备份恢复一次并验链
+node scripts/doctor.mjs --fix     # 声明丢了就补回去（先备份 profile）
+```
+
+任何一条不过，工作区根会出现 `⚠️-fish-memory-体检失败.md`——**它不依赖插件加载，所以"插件没加载"也能报警**。
+完整流程（含"库坏了怎么回到昨天"）：`docs/RECOVERY.md`。
 
 ## 接到 Claude Code / Codex（MCP）
 
